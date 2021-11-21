@@ -131,6 +131,36 @@ func TestCompile(t *testing.T) {
 			},
 		},
 		{
+			name: "a file anywhere below with empty prefix",
+			args: args{
+				prefix:  "",
+				pattern: "aFile",
+			},
+			wantRegexp: "^(.*/)?aFile$",
+			wantMatches: []matches{
+				{
+					name:    "the file in the root with slash",
+					matches: true,
+					input:   "/aFile",
+				},
+				{
+					name:    "the file in the root without slash",
+					matches: true,
+					input:   "aFile",
+				},
+				{
+					name:    "the file in a sub folder",
+					matches: true,
+					input:   "sub/aFile",
+				},
+				{
+					name:    "the file in a sub folder with a postfix",
+					matches: false,
+					input:   "sub/aFile.go",
+				},
+			},
+		},
+		{
 			name: "single star to allow any suffix of the file",
 			args: args{
 				prefix:  "a/folder",
