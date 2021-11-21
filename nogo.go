@@ -142,6 +142,13 @@ func (n *NoGo) Check(path string) Result {
 }
 
 func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
+	// Just make sure the regexp exists in all cases.
+	defer func() {
+		if rule.Regexp == nil {
+			rule.Regexp = regexp.MustCompile("")
+		}
+	}()
+
 	rule = Rule{
 		Prefix: prefix,
 
@@ -156,7 +163,7 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 
 	// Ignore lines starting with # as these are comments.
 	if pattern[0] == '#' {
-		return true, Rule{}, nil
+		return true, Rule{Regexp: regexp.MustCompile("")}, nil
 	}
 
 	// Unescape \# to #.
