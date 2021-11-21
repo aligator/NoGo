@@ -48,10 +48,10 @@ type Rule struct {
 	OnlyFolder bool
 }
 
-func (r Rule) Check(path string) Result {
-
+func (r Rule) MatchPath(path string) Result {
+	match := r.MatchString(path)
 	return Result{
-		Matches: false,
+		Matches: match,
 		Rule:    r,
 	}
 }
@@ -75,6 +75,42 @@ func WithFS(f fs.FS) Option {
 	}
 }
 
+func WithIgnoreDotGit() Option {
+	return func(noGo *NoGo) {
+		_, rule, err := Compile("", "/.git/")
+		if err != nil {
+			// Something is really wrong... should never happen.
+			panic(err)
+		}
+
+		err = noGo.AddRule(rule)
+		if err != nil {
+			// Something is really wrong... should never happen.
+			panic(err)
+		}
+	}
+}
+
+func NewGitignore(options ...Option) *NoGo {
+	no := &NoGo{}
+
+	WithIgnoreDotGit()(no)
+
+	for _, o := range options {
+		o(no)
+	}
+
+	if no.fs == nil {
+		wd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+		WithFS(os.DirFS(wd))
+	}
+
+	return no
+}
+
 func New(options ...Option) *NoGo {
 	no := &NoGo{}
 
@@ -93,6 +129,24 @@ func New(options ...Option) *NoGo {
 	return no
 }
 
+func (n *NoGo) AddAll(fileName string) error {
+	return fs.WalkDir(n.fs, ".", func(path string, d fs.DirEntry, err error) error {
+		if d.Name() == fileName {
+			return n.AddFile(path)
+		}
+		return nil
+	})
+}
+
+func (n *NoGo) AddRule(rule Rule) error {
+	n.Groups = append(n.Groups, group{
+		prefix: rule.Prefix,
+		rules:  []Rule{rule},
+	})
+
+	return nil
+}
+
 func (n *NoGo) AddFile(path string) error {
 	file, err := n.fs.Open(path)
 	if err != nil {
@@ -104,7 +158,7 @@ func (n *NoGo) AddFile(path string) error {
 		return err
 	}
 
-	folder := filepath.Base(path)
+	folder := filepath.Dir(path)
 
 	rules, err := CompileAll(folder, data)
 	if err != nil {
@@ -124,21 +178,24 @@ type Result struct {
 	Rule
 }
 
-func (n *NoGo) Check(path string) Result {
+func (n *NoGo) MatchPath(path string) Result {
+	var match Result
+
 	for _, group := range n.Groups {
 		if !strings.HasPrefix(path, group.prefix) {
 			continue
 		}
 
 		for _, rule := range group.rules {
-			res := rule.Check(path)
+			res := rule.MatchPath(path)
+
 			if res.Matches {
-				return res
+				match = res
 			}
 		}
 	}
 
-	return Result{}
+	return match
 }
 
 func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
@@ -156,12 +213,12 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 		Pattern: pattern,
 	}
 
-	// Ignore empty lines.
+	// ignoreFs empty lines.
 	if len(pattern) == 0 {
 		return true, Rule{}, nil
 	}
 
-	// Ignore lines starting with # as these are comments.
+	// ignoreFs lines starting with # as these are comments.
 	if pattern[0] == '#' {
 		return true, Rule{Regexp: regexp.MustCompile("")}, nil
 	}
@@ -171,7 +228,7 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 		pattern = pattern[1:]
 	}
 
-	// Ignore spaces except when the last one is escaped: 'something   \ '.
+	// ignoreFs spaces except when the last one is escaped: 'something   \ '.
 	// TODO: actually I am not sure if this is correct but that's what I understand by
 	//  "* Trailing spaces are ignored unless they are quoted with backslash ("\")."
 	//  However I don't think that this is very often used.
@@ -188,10 +245,16 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 	}
 
 	// If any '/' is at the beginning or middle, it is relative to the prefix.
-	if strings.Count(strings.TrimSuffix(pattern, "/"), "/") > 0 {
-		pattern = strings.Join([]string{regexp.QuoteMeta(strings.TrimSuffix(prefix, "/")), strings.TrimPrefix(pattern, "/")}, "/")
-	} else { // Else it may be anywhere bellow it.
-		pattern = strings.Join([]string{regexp.QuoteMeta(strings.TrimSuffix(prefix, "/")), "**", strings.TrimPrefix(pattern, "/")}, "/")
+	// Else it may be anywhere bellow it and we have to apply a wildcard
+	if strings.Count(strings.TrimSuffix(pattern, "/"), "/") == 0 {
+		pattern = "**/" + strings.TrimPrefix(pattern, "/")
+
+		// Also remove a possible '/' from the prefix so that it concatenates correctly with the wildcard
+		prefix = strings.TrimSuffix(prefix, "/")
+
+	} else if prefix != "" {
+		// In most other cases we have to make sure the prefix ends with a '/'
+		prefix = strings.TrimSuffix(prefix, "/") + "/"
 	}
 
 	// Replace all special chars with placeholders, then quote the rest.
@@ -235,8 +298,10 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 	pattern = strings.ReplaceAll(pattern, escapedMatchEnd, "]")
 
 	// If any '/' is at the end, it matches only folders.
+	// Note, as the input does not show us if it is a folder, the bool
+	// is set and it has to be checked separately.
 	if strings.HasSuffix(pattern, "/") {
-		// TODO: Do we really need to save this or can we assume that all given paths in Check also have a '/' if it is a folder?
+		pattern = strings.TrimSuffix(pattern, "/")
 		rule.OnlyFolder = true
 	}
 
@@ -266,12 +331,7 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 	// TODO: Not sure if that is the correct way.
 	pattern = strings.ReplaceAll(pattern, doubleStar, "[^/]*")
 
-	// If not only folders, add and optional slash.
-	if !rule.OnlyFolder {
-		pattern = pattern + "/?"
-	}
-
-	rule.Regexp, err = regexp.Compile("^" + pattern + "$")
+	rule.Regexp, err = regexp.Compile("^" + regexp.QuoteMeta(prefix) + strings.TrimPrefix(pattern, "/") + "$")
 	if err != nil {
 		return false, Rule{}, err
 	}

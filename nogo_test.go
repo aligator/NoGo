@@ -30,7 +30,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFile",
 			},
-			wantRegexp: "^a/folder/aFile/?$",
+			wantRegexp: "^a/folder/aFile$",
 			wantMatches: []matches{
 				{
 					name:    "the file itself",
@@ -60,7 +60,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "sub/aFile",
 			},
-			wantRegexp: "^a/folder/sub/aFile/?$",
+			wantRegexp: "^a/folder/sub/aFile$",
 			wantMatches: []matches{
 				{
 					name:    "the file in the root",
@@ -91,16 +91,11 @@ func TestCompile(t *testing.T) {
 				pattern: "sub/aFolder/",
 			},
 			wantOnlyFolder: true,
-			wantRegexp:     "^a/folder/sub/aFolder/$",
+			wantRegexp:     "^a/folder/sub/aFolder$",
 			wantMatches: []matches{
 				{
 					name:    "the specific folder",
 					matches: true,
-					input:   "a/folder/sub/aFolder/",
-				},
-				{
-					name:    "a file with the same name (currently it is expected that the input ends with a / if it is a folder)",
-					matches: false,
 					input:   "a/folder/sub/aFolder",
 				},
 				{
@@ -116,7 +111,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "aFile",
 			},
-			wantRegexp: "^a/folder.*/aFile/?$",
+			wantRegexp: "^a/folder.*/aFile$",
 			wantMatches: []matches{
 				{
 					name:    "the file in the root",
@@ -133,11 +128,6 @@ func TestCompile(t *testing.T) {
 					matches: false,
 					input:   "a/folder/sub/aFile.go",
 				},
-				{
-					name:    "a folder with the same name",
-					matches: true,
-					input:   "a/folder/sub/aFile/",
-				},
 			},
 		},
 		{
@@ -146,7 +136,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFile.*",
 			},
-			wantRegexp: "^a/folder/aFile\\.[^/]*/?$",
+			wantRegexp: "^a/folder/aFile\\.[^/]*$",
 			wantMatches: []matches{
 				{
 					name:    "a matching suffix",
@@ -171,7 +161,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder*IsHere/nogo.go",
 			},
-			wantRegexp: "^a/folder/aFolder[^/]*IsHere/nogo\\.go/?$",
+			wantRegexp: "^a/folder/aFolder[^/]*IsHere/nogo\\.go$",
 			wantMatches: []matches{
 				{
 					name:    "with something in the middle",
@@ -191,7 +181,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder/nogo.js?",
 			},
-			wantRegexp: "^a/folder/aFolder/nogo\\.js[^/]?/?$",
+			wantRegexp: "^a/folder/aFolder/nogo\\.js[^/]?$",
 			wantMatches: []matches{
 				{
 					name:    "with one char at the end",
@@ -216,7 +206,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder?yay/nogo.go",
 			},
-			wantRegexp: "^a/folder/aFolder[^/]?yay/nogo\\.go/?$",
+			wantRegexp: "^a/folder/aFolder[^/]?yay/nogo\\.go$",
 			wantMatches: []matches{
 				{
 					name:    "with one char",
@@ -246,7 +236,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder???yay/nogo.go",
 			},
-			wantRegexp: "^a/folder/aFolder[^/]?[^/]?[^/]?yay/nogo\\.go/?$",
+			wantRegexp: "^a/folder/aFolder[^/]?[^/]?[^/]?yay/nogo\\.go$",
 			wantMatches: []matches{
 				{
 					name:    "with one char",
@@ -281,7 +271,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFol^der/n{o}go.go",
 			},
-			wantRegexp: "^a/folder/aFol\\^der/n\\{o\\}go\\.go/?$",
+			wantRegexp: "^a/folder/aFol\\^der/n\\{o\\}go\\.go$",
 			wantMatches: []matches{
 				{
 					name:    "with these characters in the input",
@@ -296,7 +286,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aF\\?\\?older/no\\*go.go",
 			},
-			wantRegexp: "^a/folder/aF\\?\\?older/no\\*go\\.go/?$",
+			wantRegexp: "^a/folder/aF\\?\\?older/no\\*go\\.go$",
 			wantMatches: []matches{
 				{
 					name:    "with these characters in the input",
@@ -311,7 +301,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder/nogo.[jt]s",
 			},
-			wantRegexp: "^a/folder/aFolder/nogo\\.[jt]s/?$",
+			wantRegexp: "^a/folder/aFolder/nogo\\.[jt]s$",
 			wantMatches: []matches{
 				{
 					name:    "with one of these characters",
@@ -341,7 +331,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder/nogo.[a-z]s",
 			},
-			wantRegexp: "^a/folder/aFolder/nogo\\.[a-z]s/?$",
+			wantRegexp: "^a/folder/aFolder/nogo\\.[a-z]s$",
 			wantMatches: []matches{
 				{
 					name:    "with one of these characters",
@@ -371,7 +361,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder/nogo.[!a-z]s",
 			},
-			wantRegexp: "^a/folder/aFolder/nogo\\.[^a-z]s/?$",
+			wantRegexp: "^a/folder/aFolder/nogo\\.[^a-z]s$",
 			wantMatches: []matches{
 				{
 					name:    "with one of these characters",
@@ -401,7 +391,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder/nogo.\\[!a-z\\]s",
 			},
-			wantRegexp: "^a/folder/aFolder/nogo\\.\\[!a-z\\]s/?$",
+			wantRegexp: "^a/folder/aFolder/nogo\\.\\[!a-z\\]s$",
 			wantMatches: []matches{
 				{
 					name:    "with these characters in the input",
@@ -433,7 +423,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "\\#aFile",
 			},
-			wantRegexp: "^a/folder.*/#aFile/?$",
+			wantRegexp: "^a/folder.*/#aFile$",
 			wantMatches: []matches{
 				{
 					name:    "exact file",
@@ -448,7 +438,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "aFile/isHere   ",
 			},
-			wantRegexp: "^a/folder/aFile/isHere/?$",
+			wantRegexp: "^a/folder/aFile/isHere$",
 			wantMatches: []matches{
 				{
 					name:    "exact file",
@@ -468,7 +458,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "aFile/isHere  \\ ",
 			},
-			wantRegexp: "^a/folder/aFile/isHere   /?$",
+			wantRegexp: "^a/folder/aFile/isHere   $",
 			wantMatches: []matches{
 				{
 					name:    "exact file",
@@ -488,7 +478,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "!/aFile",
 			},
-			wantRegexp: "^a/folder/aFile/?$",
+			wantRegexp: "^a/folder/aFile$",
 			wantNegate: true,
 			wantMatches: []matches{
 				{
@@ -510,6 +500,36 @@ func TestCompile(t *testing.T) {
 					name:    "the file with a suffix",
 					matches: false,
 					input:   "a/folder/aFile.go",
+				},
+			},
+		},
+		{
+			name: "dot in prefix",
+			args: args{
+				prefix:  ".idea",
+				pattern: "/workspace.xml",
+			},
+			wantRegexp: "^\\.idea/workspace\\.xml$",
+			wantMatches: []matches{
+				{
+					name:    "the file itself",
+					matches: true,
+					input:   ".idea/workspace.xml",
+				},
+			},
+		},
+		{
+			name: "empty prefix",
+			args: args{
+				prefix:  "",
+				pattern: "/.git",
+			},
+			wantRegexp: "^\\.git$",
+			wantMatches: []matches{
+				{
+					name:    "the file itself",
+					matches: true,
+					input:   ".git",
 				},
 			},
 		},
