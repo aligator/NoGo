@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/spf13/afero"
 	"io/fs"
 	"nogo"
 	"os"
@@ -13,11 +14,12 @@ func main() {
 		panic(err)
 	}
 
-	err = nogo.WalkDir(os.DirFS(wd), ".gitignore", ".", func(path string, d fs.DirEntry, err error) error {
+	baseFS := afero.NewBasePathFs(afero.NewOsFs(), wd)
+	err = nogo.AferoWalk(baseFS, ".gitignore", func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(path, d.Name())
+		fmt.Println(path, info.Name())
 		return nil
 	}, nogo.WithIgnoreDotGit())
 

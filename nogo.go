@@ -320,7 +320,11 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 	// Replace the placeholders:
 	// A leading "**" followed by a slash means matches in all directories.
 	if strings.HasPrefix(pattern, doubleStar+"/") {
-		pattern = ".*" + strings.TrimPrefix(pattern, doubleStar)
+		if prefix == "" {
+			pattern = "(.*/)?" + strings.TrimPrefix(pattern, doubleStar+"/")
+		} else {
+			pattern = "(/.*|.*)" + strings.TrimPrefix(pattern, doubleStar)
+		}
 	}
 
 	// A trailing "/**" matches everything inside.

@@ -111,7 +111,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "aFile",
 			},
-			wantRegexp: "^a/folder.*/aFile$",
+			wantRegexp: "^a/folder(/.*|.*)/aFile$",
 			wantMatches: []matches{
 				{
 					name:    "the file in the root",
@@ -423,7 +423,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "\\#aFile",
 			},
-			wantRegexp: "^a/folder.*/#aFile$",
+			wantRegexp: "^a/folder(/.*|.*)/#aFile$",
 			wantMatches: []matches{
 				{
 					name:    "exact file",
