@@ -12,11 +12,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fs.WalkDir()
+
 	err = nogo.WalkDir(os.DirFS(wd), ".gitignore", ".", func(path string, d fs.DirEntry, err error) error {
 		fmt.Println(path, d, err)
 		return err
-	})
+	}, nogo.WithIgnoreDotGit())
+
 	if err != nil {
 		panic(err)
 	}

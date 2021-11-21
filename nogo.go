@@ -114,9 +114,7 @@ func NewGitignore(options ...Option) *NoGo {
 func New(options ...Option) *NoGo {
 	no := &NoGo{}
 
-	for _, o := range options {
-		o(no)
-	}
+	no.Apply(options...)
 
 	if no.fs == nil {
 		wd, err := os.Getwd()
@@ -127,6 +125,12 @@ func New(options ...Option) *NoGo {
 	}
 
 	return no
+}
+
+func (n *NoGo) Apply(options ...Option) {
+	for _, o := range options {
+		o(n)
+	}
 }
 
 func (n *NoGo) AddAll(fileName string) error {
@@ -159,6 +163,9 @@ func (n *NoGo) AddFile(path string) error {
 	}
 
 	folder := filepath.Dir(path)
+	if folder == "." {
+		folder = ""
+	}
 
 	rules, err := CompileAll(folder, data)
 	if err != nil {
