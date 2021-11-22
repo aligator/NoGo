@@ -40,26 +40,6 @@ import (
 	"strings"
 )
 
-type Rule struct {
-	Regexp     *regexp.Regexp
-	Prefix     string
-	Pattern    string
-	Negate     bool
-	OnlyFolder bool
-}
-
-var (
-	GitIgnoreRule = MustCompileAll("", []byte("/.git/\n/.git/**"))
-)
-
-func (r Rule) MatchPath(path string) Result {
-	match := r.Regexp.MatchString(path)
-	return Result{
-		Found: match,
-		Rule:  r,
-	}
-}
-
 type group struct {
 	prefix string
 	rules  []Rule
@@ -69,46 +49,69 @@ type Option func(noGo *NoGo)
 
 type NoGo struct {
 	fs              fs.FS
-	Groups          []group
+	groups          []group
 	ignoreFileNames []string
-	matchParents    bool
+	matchNoParents  bool
 }
 
+// Apply options to NoGo.
+// This is also possible when instantiating with New.
+func (n *NoGo) Apply(options ...Option) {
+	for _, o := range options {
+		o(n)
+	}
+}
+
+// WithFS is an option which injects a filesystem.
+// If this is not passed, the current working directory is used.
 func WithFS(f fs.FS) Option {
 	return func(noGo *NoGo) {
 		noGo.fs = f
 	}
 }
 
+// WithRules can be used to add rules without an extra call to an Add method.
+// This can be used to add predefined rules like the GitIgnoreRule.
+// For example:
+//  n := nogo.New(nogo.WithRules(nogo.GitIgnoreRule...))
 func WithRules(rules ...Rule) Option {
 	return func(noGo *NoGo) {
 		noGo.AddRules(rules...)
 	}
 }
 
-// WithMatchParents enables time-consuming check for all parents.
-// This is for example useful to get the correct rules for a file without traversing in a Walk.
+// WithoutMatchParents disables the time-consuming check for all parents.
+// You can use this if you know that no file gets checked without also all parents being checked before.
+//
+// As the parent-check is time-consuming it is for example better to disable that check when using Walk function.
+// (nogo.WalkDir and nogo.WalkAfero do this automatically).
 //
 // Example:
 //  Folder1
 //   - File1
 //  .gitignore -> Rule: "/Folder1"
 //
-// If the gitignore contains the rule "/Folder1" and you check the file /Folder1/File1 with "WithMatchParents"
-// You will get a correct match.
+// If the gitignore contains the rule "/Folder1" and you check the file
+// `/Folder1/File1`, you will get a correct match.
 //
-// But if you check the file WITHOUT "WithMatchParents", the file will not match as it itself is not in any ignore-list.
+// But if you check the file WITH "WithoutMatchParents", the file will not match
+// as it itself is not in any ignore-list and the parent folder does not get checked.
 //
 // When doing file traversal with a Walk method, this doesn't matter
 // as the Folder1 won't be read and therefore /Folder1/File1 won't be read either.
 //
-// But when checking only the file /Folder1/File1 directly, you will want "WithMatchParents" enabled.
-func WithMatchParents() Option {
+// But when checking only the file /Folder1/File1 directly, you will NOT want "WithoutMatchParents".
+func WithoutMatchParents() Option {
 	return func(noGo *NoGo) {
-		noGo.matchParents = true
+		noGo.matchNoParents = true
 	}
 }
 
+// NewGitignore creates a new NoGo which is already preset for the use
+// with .gitignore files, as this is very common.
+//
+// It not only sets the ignoreFileName to ".gitignore" but
+// also adds the GitIgnoreRule to avoid .git folders.
 func NewGitignore(options ...Option) *NoGo {
 	no := &NoGo{
 		ignoreFileNames: []string{".gitignore"},
@@ -131,6 +134,8 @@ func NewGitignore(options ...Option) *NoGo {
 	return no
 }
 
+// New creates a NoGo instance which works for the given ignoreFileNames.
+// You can pass additional options if needed.
 func New(ignoreFileNames []string, options ...Option) *NoGo {
 	no := &NoGo{
 		ignoreFileNames: ignoreFileNames,
@@ -149,12 +154,6 @@ func New(ignoreFileNames []string, options ...Option) *NoGo {
 	return no
 }
 
-func (n *NoGo) Apply(options ...Option) {
-	for _, o := range options {
-		o(n)
-	}
-}
-
 // AddAll ignore files which can be found.
 // It only loads ignore files which are not ignored itself by another file.
 func (n *NoGo) AddAll() error {
@@ -171,13 +170,23 @@ func (n *NoGo) AddAll() error {
 // AddRules to NoGo which are already compiled.
 func (n *NoGo) AddRules(rules ...Rule) {
 	for _, rule := range rules {
-		n.Groups = append(n.Groups, group{
+		n.groups = append(n.groups, group{
 			prefix: rule.Prefix,
 			rules:  []Rule{rule},
 		})
 	}
 }
 
+// AddFile reads the given file and tries to load the content as a ignore file.
+// It does not check the filename. So you can add any file, independently of
+// the configured ignoreFileNames.
+//
+// The folder of the give filepath is used as Prefix for the rules.
+//
+// Note that the order in which rules are added is very important.
+// You should always first add the rules of parent folders and then of the
+// children folders.
+// TODO: in the future the rules could be re-sorted based on the prefix names.
 func (n *NoGo) AddFile(path string) error {
 	file, err := n.fs.Open(path)
 	if err != nil {
@@ -199,7 +208,7 @@ func (n *NoGo) AddFile(path string) error {
 		return err
 	}
 
-	n.Groups = append(n.Groups, group{
+	n.groups = append(n.groups, group{
 		prefix: folder,
 		rules:  rules,
 	})
@@ -207,38 +216,77 @@ func (n *NoGo) AddFile(path string) error {
 	return nil
 }
 
-type Result struct {
-	Rule
-
-	// Found is true if any matching rule was found.
-	// Do not use it to check if the file is actually to be ignored!
-	// For this use Resolve as it takes into account some special cases.
-	Found bool
-
-	// ParentMatch saves if the actual rule matched for a parent or not.
-	// In case of a parent match the check for OnlyFolder has to be different.
-	ParentMatch bool
+// MatchPath calculates if the path matches any rule.
+//
+// It does the same as MatchPathBecauseNoStat, but it itself determines if path is a
+// directory.
+// If you already have that information, use MatchPathBecauseNoStat.
+//
+// As it has to query the filesystem, it may return an error
+// due to possible filesystem errors.
+func (n *NoGo) MatchPath(path string) (bool, error) {
+	match, _, err := n.MatchPathBecause(path)
+	return match, err
 }
 
-// Resolve the Result by taking into account OnlyFolder
-// and if the matched path is a directory.
-func (r Result) Resolve(isDir bool) bool {
-	if r.Found && r.OnlyFolder && !isDir && !r.ParentMatch {
-		return false
+// MatchPathBecause calculates if the path matches any rule.
+// It returns the match but also a result, where the match was calculated from.
+// Use MatchPath or MatchPathNoStat if you do not need the cause.
+//
+// It does the same as MatchPathBecauseNoStat, but it itself determines if path is a
+// directory.
+// If you already have that information, use MatchPathBecauseNoStat.
+//
+// As it has to query the filesystem, it may return an error
+// due to possible filesystem errors.
+func (n *NoGo) MatchPathBecause(path string) (match bool, because Result, err error) {
+	statFS, ok := n.fs.(fs.StatFS)
+	var isDir bool
+	if ok {
+		stat, err := statFS.Stat(path)
+		if err != nil {
+			return false, Result{}, err
+		}
+		isDir = stat.IsDir()
+	} else {
+		f, err := n.fs.Open(path)
+		if err != nil {
+			return false, Result{}, err
+		}
+
+		stat, err := f.Stat()
+		if err != nil {
+			return false, Result{}, err
+		}
+		isDir = stat.IsDir()
 	}
 
-	if r.Found && r.Negate {
-		return false
-	}
-
-	return r.Found
+	match, because = n.MatchPathBecauseNoStat(path, isDir)
+	return match, because, nil
 }
 
-func (n *NoGo) MatchPath(path string) Result {
-	var match Result
+// MatchPathNoStat calculates if the path matches any rule.
+//
+// It does the same as MatchPath, but you have to pass yourself if the
+// path is a directory.
+// This can be useful to avoid unneeded Stat-calls.
+// (e.g. in a Walk function where you already have that information)
+func (n *NoGo) MatchPathNoStat(path string, isDir bool) bool {
+	match, _ := n.MatchPathBecauseNoStat(path, isDir)
+	return match
+}
 
+// MatchPathBecauseNoStat calculates if the path matches any rule.
+// It returns the match but also a result, where the match was calculated from.
+// Use MatchPath or MatchPathNoStat if you do not need the cause.
+//
+// It does the same as MatchPathBecause, but you have to pass yourself if the
+// path is a directory.
+// This can be useful to avoid unneeded Stat-calls.
+// (e.g. in a Walk function where you already have that information)
+func (n *NoGo) MatchPathBecauseNoStat(path string, isDir bool) (match bool, because Result) {
 	pathToCheck := []string{path}
-	if n.matchParents {
+	if !n.matchNoParents {
 		pathToCheck = strings.Split(filepath.ToSlash(path), "/")
 	}
 
@@ -246,27 +294,35 @@ func (n *NoGo) MatchPath(path string) Result {
 	for i, p := range pathToCheck {
 		path = filepath.Join(path, p)
 
-		for _, group := range n.Groups {
-			if !strings.HasPrefix(path, group.prefix) {
+		for _, g := range n.groups {
+			if !strings.HasPrefix(path, g.prefix) {
 				continue
 			}
 
-			for _, rule := range group.rules {
-				res := rule.MatchPath(path)
+			for _, rule := range g.rules {
+				newRes := rule.MatchPath(path)
 
-				if res.Found {
-					match.ParentMatch = i < len(pathToCheck)-1
-					match = res
+				if newRes.Found {
+					because = newRes
+					because.ParentMatch = i < len(pathToCheck)-1
 				}
 			}
 		}
 	}
 
-	return match
+	if because.Found && because.OnlyFolder && !isDir && because.ParentMatch {
+		return false, because
+	}
+
+	if because.Found && because.Negate {
+		return false, because
+	}
+
+	return because.Found, because
 }
 
 // Compile the pattern into a single regexp.
-// skip means that this pattern doesn't contain any rule (e.g. just a comment or empty line)
+// skip means that this pattern doesn't contain any rule (e.g. just a comment or empty line).zz
 func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 	// Just make sure the regexp exists in all cases.
 	defer func() {
@@ -412,6 +468,8 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 	return false, rule, nil
 }
 
+// CompileAll rules in the given data line by line.
+// The prefix is added to all rules.
 func CompileAll(prefix string, data []byte) ([]Rule, error) {
 	rules := make([]Rule, 0)
 	lines := strings.Split(string(data), "\n")
@@ -428,6 +486,7 @@ func CompileAll(prefix string, data []byte) ([]Rule, error) {
 	return rules, nil
 }
 
+// MustCompileAll does the same as CompileAll but panics on error.
 func MustCompileAll(prefix string, data []byte) []Rule {
 	rule, err := CompileAll(prefix, data)
 	if err != nil {

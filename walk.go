@@ -15,7 +15,7 @@ type ignoreFS struct {
 func (n *NoGo) walkFN(path string, isDir bool) (bool, error) {
 	if path != "." {
 		// If the rule is a negation rule, still proceed.
-		if n.MatchPath(path).Resolve(isDir) {
+		if n.MatchPathNoStat(path, isDir) {
 			if isDir {
 				return false, fs.SkipDir
 			}
@@ -55,7 +55,7 @@ func (n *NoGo) walkFN(path string, isDir bool) (bool, error) {
 // All options you pass, are applied to the internal NoGo instance.
 func AferoWalk(ignoreFileNames []string, fsys afero.Fs, fn filepath.WalkFunc, options ...Option) error {
 	iofs := afero.NewIOFS(fsys)
-	n := New(ignoreFileNames, WithFS(iofs))
+	n := New(ignoreFileNames, WithFS(iofs), WithoutMatchParents())
 	n.Apply(options...)
 
 	ifs := &ignoreFS{
@@ -98,7 +98,7 @@ func AferoWalk(ignoreFileNames []string, fsys afero.Fs, fn filepath.WalkFunc, op
 // WalkDir does not follow symbolic links found in directories,
 // but if root itself is a symbolic link, its target will be walked.
 func WalkDir(ignoreFileNames []string, fsys fs.FS, root string, fn fs.WalkDirFunc, options ...Option) error {
-	n := New(ignoreFileNames, WithFS(fsys))
+	n := New(ignoreFileNames, WithFS(fsys), WithoutMatchParents())
 	n.Apply(options...)
 
 	ifs := &ignoreFS{

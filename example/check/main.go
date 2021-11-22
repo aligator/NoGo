@@ -22,7 +22,7 @@ func main() {
 	// DirFs actually implements StatFS, so we can use it.
 	wdfs := os.DirFS(wd).(fs.StatFS)
 
-	n := nogo.NewGitignore(nogo.WithMatchParents(), nogo.WithFS(wdfs))
+	n := nogo.NewGitignore(nogo.WithFS(wdfs))
 	if err := n.AddAll(); err != nil {
 		panic(err)
 	}
@@ -47,7 +47,7 @@ func main() {
 			panic(err)
 		}
 
-		if n.MatchPath(toSearch).Resolve(info.IsDir()) {
+		if n.MatchPathNoStat(toSearch, info.IsDir()) {
 			fmt.Printf("./%v\n", toSearch)
 		}
 	}
