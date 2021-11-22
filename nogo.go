@@ -474,6 +474,9 @@ func CompileAll(prefix string, data []byte) ([]Rule, error) {
 	rules := make([]Rule, 0)
 	lines := strings.Split(string(data), "\n")
 	for _, line := range lines {
+		// Remove \r on windows.
+		line = strings.TrimSuffix(line, "\r")
+
 		skip, rule, err := Compile(prefix, line)
 		if err != nil {
 			return nil, err
