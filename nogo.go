@@ -287,12 +287,14 @@ func (n *NoGo) MatchPathNoStat(path string, isDir bool) bool {
 func (n *NoGo) MatchPathBecauseNoStat(path string, isDir bool) (match bool, because Result) {
 	pathToCheck := []string{path}
 	if !n.matchNoParents {
+		// Convert to slash for windows compatibility before splitting.
 		pathToCheck = strings.Split(filepath.ToSlash(path), "/")
 	}
 
 	path = ""
 	for i, p := range pathToCheck {
-		path = filepath.Join(path, p)
+		// Convert to slash for windows compatibility.
+		path = filepath.ToSlash(filepath.Join(path, p))
 
 		for _, g := range n.groups {
 			if !strings.HasPrefix(path, g.prefix) {
