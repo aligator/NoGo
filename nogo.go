@@ -82,7 +82,7 @@ func WithFS(f fs.FS) Option {
 
 func WithRules(rules ...Rule) Option {
 	return func(noGo *NoGo) {
-		noGo.AddRule(rules...)
+		noGo.AddRules(rules...)
 	}
 }
 
@@ -114,7 +114,7 @@ func NewGitignore(options ...Option) *NoGo {
 		ignoreFileNames: []string{".gitignore"},
 	}
 
-	no.AddRule(GitIgnoreRule...)
+	no.AddRules(GitIgnoreRule...)
 
 	for _, o := range options {
 		o(no)
@@ -155,6 +155,8 @@ func (n *NoGo) Apply(options ...Option) {
 	}
 }
 
+// AddAll ignore files which can be found.
+// It only loads ignore files which are not ignored itself by another file.
 func (n *NoGo) AddAll() error {
 	return fs.WalkDir(n.fs, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -166,7 +168,8 @@ func (n *NoGo) AddAll() error {
 	})
 }
 
-func (n *NoGo) AddRule(rules ...Rule) {
+// AddRules to NoGo which are already compiled.
+func (n *NoGo) AddRules(rules ...Rule) {
 	for _, rule := range rules {
 		n.Groups = append(n.Groups, group{
 			prefix: rule.Prefix,
