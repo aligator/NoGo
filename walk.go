@@ -1,10 +1,10 @@
 package nogo
 
 import (
-	"errors"
-	"github.com/spf13/afero"
 	"io/fs"
 	"path/filepath"
+
+	"github.com/spf13/afero"
 )
 
 type ignoreFS struct {
@@ -12,19 +12,10 @@ type ignoreFS struct {
 	*NoGo
 }
 
-func walkFN(ifs *ignoreFS, ignoreFileName string, path string, isDir bool, err error) (bool, error) {
-	if err != nil {
-		return false, err
-	}
-
+func (n *NoGo) walkFN(path string, isDir bool) (bool, error) {
 	if path != "." {
-		match := ifs.MatchPath(path)
-		if match.OnlyFolder && !isDir {
-			match.Matches = false
-		}
-
 		// If the rule is a negation rule, still proceed.
-		if match.Matches && !match.Rule.Negate {
+		if n.MatchPath(path).Resolve(isDir) {
 			if isDir {
 				return false, fs.SkipDir
 			}
@@ -32,14 +23,20 @@ func walkFN(ifs *ignoreFS, ignoreFileName string, path string, isDir bool, err e
 		}
 	}
 
-	if isDir {
-		// Add the ignore files when touching a new folder.
-		// That way we do not need to read all ignore files in advance.
-		// THis works because WalkDir runs in a deterministic way.
-		err := ifs.AddFile(filepath.Join(path, ignoreFileName))
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return false, err
+	if !isDir {
+		name := filepath.Base(path)
+		for _, ignoreFileName := range n.ignoreFileNames {
+			if name != ignoreFileName {
+				continue
+			}
+
+			err := n.AddFile(path)
+			if err != nil {
+				return false, err
+			}
+			break
 		}
+
 	}
 
 	return true, nil
@@ -56,9 +53,9 @@ func walkFN(ifs *ignoreFS, ignoreFileName string, path string, isDir bool, err e
 // files found in the file-tree.
 //
 // All options you pass, are applied to the internal NoGo instance.
-func AferoWalk(fsys afero.Fs, ignoreFileName string, fn filepath.WalkFunc, options ...Option) error {
+func AferoWalk(ignoreFileNames []string, fsys afero.Fs, fn filepath.WalkFunc, options ...Option) error {
 	iofs := afero.NewIOFS(fsys)
-	n := New(WithFS(iofs))
+	n := New(ignoreFileNames, WithFS(iofs))
 	n.Apply(options...)
 
 	ifs := &ignoreFS{
@@ -67,7 +64,11 @@ func AferoWalk(fsys afero.Fs, ignoreFileName string, fn filepath.WalkFunc, optio
 	}
 
 	return afero.Walk(fsys, ".", func(path string, info fs.FileInfo, err error) error {
-		ok, err := walkFN(ifs, ignoreFileName, path, info.IsDir(), err)
+		if err != nil {
+			return err
+		}
+
+		ok, err := ifs.walkFN(path, info.IsDir())
 		if err != nil {
 			return err
 		}
@@ -96,8 +97,8 @@ func AferoWalk(fsys afero.Fs, ignoreFileName string, fn filepath.WalkFunc, optio
 //
 // WalkDir does not follow symbolic links found in directories,
 // but if root itself is a symbolic link, its target will be walked.
-func WalkDir(fsys fs.FS, ignoreFileName string, root string, fn fs.WalkDirFunc, options ...Option) error {
-	n := New(WithFS(fsys))
+func WalkDir(ignoreFileNames []string, fsys fs.FS, root string, fn fs.WalkDirFunc, options ...Option) error {
+	n := New(ignoreFileNames, WithFS(fsys))
 	n.Apply(options...)
 
 	ifs := &ignoreFS{
@@ -106,7 +107,11 @@ func WalkDir(fsys fs.FS, ignoreFileName string, root string, fn fs.WalkDirFunc, 
 	}
 
 	return fs.WalkDir(ifs, root, func(path string, d fs.DirEntry, err error) error {
-		ok, err := walkFN(ifs, ignoreFileName, path, d.IsDir(), err)
+		if err != nil {
+			return err
+		}
+
+		ok, err := ifs.walkFN(path, d.IsDir())
 		if err != nil {
 			return err
 		}

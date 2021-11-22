@@ -18,8 +18,8 @@ func main() {
 
 	wdfs := os.DirFS(wd)
 
-	n := nogo.New(nogo.WithIgnoreDotGit(), nogo.WithFS(wdfs))
-	if err := n.AddAll(".gitignore"); err != nil {
+	n := nogo.NewGitignore(nogo.WithMatchParents(), nogo.WithFS(wdfs))
+	if err := n.AddAll(); err != nil {
 		panic(err)
 	}
 
@@ -48,7 +48,7 @@ func main() {
 		panic(err)
 	}
 
-	if match := n.MatchPath(toSearch); match.Matches && !match.Negate && !(match.OnlyFolder && !info.IsDir()) {
+	if n.MatchPath(toSearch).Resolve(info.IsDir()) {
 		fmt.Printf("./%v\n", toSearch)
 	}
 }

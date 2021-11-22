@@ -41,18 +41,22 @@ import (
 )
 
 type Rule struct {
-	*regexp.Regexp
+	Regexp     *regexp.Regexp
 	Prefix     string
 	Pattern    string
 	Negate     bool
 	OnlyFolder bool
 }
 
+var (
+	GitIgnoreRule = MustCompileAll("", []byte("/.git/\n/.git/**"))
+)
+
 func (r Rule) MatchPath(path string) Result {
-	match := r.MatchString(path)
+	match := r.Regexp.MatchString(path)
 	return Result{
-		Matches: match,
-		Rule:    r,
+		Found: match,
+		Rule:  r,
 	}
 }
 
@@ -64,9 +68,10 @@ type group struct {
 type Option func(noGo *NoGo)
 
 type NoGo struct {
-	fs fs.FS
-
-	Groups []group
+	fs              fs.FS
+	Groups          []group
+	ignoreFileNames []string
+	matchParents    bool
 }
 
 func WithFS(f fs.FS) Option {
@@ -75,26 +80,41 @@ func WithFS(f fs.FS) Option {
 	}
 }
 
-func WithIgnoreDotGit() Option {
+func WithRules(rules ...Rule) Option {
 	return func(noGo *NoGo) {
-		_, rule, err := Compile("", "/.git/")
-		if err != nil {
-			// Something is really wrong... should never happen.
-			panic(err)
-		}
+		noGo.AddRule(rules...)
+	}
+}
 
-		err = noGo.AddRule(rule)
-		if err != nil {
-			// Something is really wrong... should never happen.
-			panic(err)
-		}
+// WithMatchParents enables time-consuming check for all parents.
+// This is for example usefull to get the correct rules for a file without traversing in a Walk.
+//
+// Example:
+//  Folder1
+//   - File1
+//  .gitignore -> Rule: "/Folder1"
+//
+// If the gitignore contains the rule "/Folder1" and you check the file /Folder1/File1 with "WithMatchParents"
+// You will get a correct match.
+//
+// But if you check the file WITHOUT "WithMatchParents", the file will not match as it itself is not in any ignore-list.
+//
+// When doing file traversal with a Walk method, this doesn't matter
+// as the Folder1 won't be read and therefore /Folder1/File1 won't be read either.
+//
+// But when checking only the file /Folder1/File1 directly, you will want "WithMatchParents" enabled.
+func WithMatchParents() Option {
+	return func(noGo *NoGo) {
+		noGo.matchParents = true
 	}
 }
 
 func NewGitignore(options ...Option) *NoGo {
-	no := &NoGo{}
+	no := &NoGo{
+		ignoreFileNames: []string{".gitignore"},
+	}
 
-	WithIgnoreDotGit()(no)
+	no.AddRule(GitIgnoreRule...)
 
 	for _, o := range options {
 		o(no)
@@ -111,8 +131,10 @@ func NewGitignore(options ...Option) *NoGo {
 	return no
 }
 
-func New(options ...Option) *NoGo {
-	no := &NoGo{}
+func New(ignoreFileNames []string, options ...Option) *NoGo {
+	no := &NoGo{
+		ignoreFileNames: ignoreFileNames,
+	}
 
 	no.Apply(options...)
 
@@ -133,22 +155,24 @@ func (n *NoGo) Apply(options ...Option) {
 	}
 }
 
-func (n *NoGo) AddAll(fileName string) error {
+func (n *NoGo) AddAll() error {
 	return fs.WalkDir(n.fs, ".", func(path string, d fs.DirEntry, err error) error {
-		if d.Name() == fileName {
-			return n.AddFile(path)
+		if err != nil {
+			return err
 		}
-		return nil
+
+		_, err = n.walkFN(path, d.IsDir())
+		return err
 	})
 }
 
-func (n *NoGo) AddRule(rule Rule) error {
-	n.Groups = append(n.Groups, group{
-		prefix: rule.Prefix,
-		rules:  []Rule{rule},
-	})
-
-	return nil
+func (n *NoGo) AddRule(rules ...Rule) {
+	for _, rule := range rules {
+		n.Groups = append(n.Groups, group{
+			prefix: rule.Prefix,
+			rules:  []Rule{rule},
+		})
+	}
 }
 
 func (n *NoGo) AddFile(path string) error {
@@ -181,23 +205,56 @@ func (n *NoGo) AddFile(path string) error {
 }
 
 type Result struct {
-	Matches bool
 	Rule
+
+	// Found is true if any matching rule was found.
+	// Do not use it to check if the file is actually to be ignored!
+	// For this use Resolve as it takes into account some special cases.
+	Found bool
+
+	// ParentMatch saves if the actual rule matched for a parent or not.
+	// In case of a parent match the check for OnlyFolder has to be different.
+	ParentMatch bool
+}
+
+// Resolve the Result by taking into account OnlyFolder
+// and if the matched path is a directory.
+func (r Result) Resolve(isDir bool) bool {
+	if r.Found && r.OnlyFolder && !isDir && !r.ParentMatch {
+		return false
+	}
+
+	if r.Found && r.Negate {
+		return false
+	}
+
+	return r.Found
 }
 
 func (n *NoGo) MatchPath(path string) Result {
 	var match Result
 
-	for _, group := range n.Groups {
-		if !strings.HasPrefix(path, group.prefix) {
-			continue
-		}
+	pathToCheck := []string{path}
+	if n.matchParents {
+		pathToCheck = strings.Split(filepath.ToSlash(path), "/")
+	}
 
-		for _, rule := range group.rules {
-			res := rule.MatchPath(path)
+	path = ""
+	for i, p := range pathToCheck {
+		path = filepath.Join(path, p)
 
-			if res.Matches {
-				match = res
+		for _, group := range n.Groups {
+			if !strings.HasPrefix(path, group.prefix) {
+				continue
+			}
+
+			for _, rule := range group.rules {
+				res := rule.MatchPath(path)
+
+				if res.Found {
+					match.ParentMatch = i < len(pathToCheck)-1
+					match = res
+				}
 			}
 		}
 	}
@@ -205,6 +262,8 @@ func (n *NoGo) MatchPath(path string) Result {
 	return match
 }
 
+// Compile the pattern into a single regexp.
+// skip means that this pattern doesn't contain any rule (e.g. just a comment or empty line)
 func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 	// Just make sure the regexp exists in all cases.
 	defer func() {
@@ -364,4 +423,13 @@ func CompileAll(prefix string, data []byte) ([]Rule, error) {
 		}
 	}
 	return rules, nil
+}
+
+func MustCompileAll(prefix string, data []byte) []Rule {
+	rule, err := CompileAll(prefix, data)
+	if err != nil {
+		panic(err)
+	}
+
+	return rule
 }
