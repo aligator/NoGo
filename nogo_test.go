@@ -589,7 +589,7 @@ func TestCompile(t *testing.T) {
 
 			for _, match := range tt.wantMatches {
 				t.Run(match.input+"|"+match.name, func(t *testing.T) {
-					gotMatches := gotRule.MatchString(match.input)
+					gotMatches := gotRule.Regexp.MatchString(match.input)
 					if gotMatches != match.matches {
 						t.Errorf("gotRule.MatchString(\"%v\") = %v, want %v", match.input, gotMatches, match.matches)
 					}

@@ -87,7 +87,7 @@ func WithRules(rules ...Rule) Option {
 }
 
 // WithMatchParents enables time-consuming check for all parents.
-// This is for example usefull to get the correct rules for a file without traversing in a Walk.
+// This is for example useful to get the correct rules for a file without traversing in a Walk.
 //
 // Example:
 //  Folder1
