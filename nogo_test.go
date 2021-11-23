@@ -1,7 +1,14 @@
 package nogo
 
 import (
+	"io/fs"
+	"os"
+	"path/filepath"
+	"reflect"
+	"regexp"
 	"testing"
+
+	"github.com/spf13/afero"
 )
 
 func TestCompile(t *testing.T) {
@@ -594,6 +601,117 @@ func TestCompile(t *testing.T) {
 						t.Errorf("gotRule.MatchString(\"%v\") = %v, want %v", match.input, gotMatches, match.matches)
 					}
 				})
+			}
+		})
+	}
+}
+
+func Must(t *testing.T, err error) {
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func NewTestFS(t *testing.T) fs.FS {
+	memfs := afero.NewMemMapFs()
+
+	var testFS = map[string]string{
+		".gitignore":                            "globallyIgnoredFile\naPartiallyIgnoredFolder/**\n!naPartiallyIgnoredFolder/.gitignore",
+		"aFolder/ignoredFile":                   "",
+		"aFolder/notIgnored":                    "",
+		"aFolder/locallyIgnoredFile":            "",
+		"aFolder/.gitignore":                    "/locallyIgnoredFile\n/ignoredSubFolder",
+		"aFolder/ignoredSubFolder/aFile":        "",
+		"aFolder/ignoredSubFolder/anotherFile":  "",
+		"aPartiallyIgnoredFolder/.gitignore":    "!unignoredFile",
+		"aPartiallyIgnoredFolder/unignoredFile": "",
+		"aPartiallyIgnoredFolder/ignoredFile":   "",
+	}
+
+	for path, file := range testFS {
+		folder := filepath.Dir(path)
+		Must(t, memfs.MkdirAll(folder, os.ModeDir))
+		f, err := memfs.Create(path)
+		Must(t, err)
+		_, err = f.WriteString(file)
+		Must(t, err)
+	}
+
+	return afero.NewIOFS(memfs)
+}
+
+func TestNoGo_AddAll(t *testing.T) {
+	type fields struct {
+		fs              fs.FS
+		groups          []group
+		ignoreFileNames []string
+		matchNoParents  bool
+	}
+	tests := []struct {
+		name       string
+		fields     fields
+		wantErr    bool
+		wantGroups []group
+	}{
+		{
+			name: "load the fake testFS",
+			fields: fields{
+				fs:              NewTestFS(t),
+				ignoreFileNames: []string{".gitignore"},
+			},
+			wantErr: false,
+			wantGroups: []group{
+				{
+					prefix: "",
+					rules: []Rule{
+						{
+							Regexp:  regexp.MustCompile("^(.*/)?globallyIgnoredFile$"),
+							Pattern: "globallyIgnoredFile",
+						},
+						{
+							Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder/.*$"),
+							Pattern: "aPartiallyIgnoredFolder/**",
+							Negate:  true,
+						},
+						{
+							Regexp:  regexp.MustCompile(`^naPartiallyIgnoredFolder/\.gitignore$`),
+							Pattern: "!naPartiallyIgnoredFolder/.gitignore",
+							Negate:  true,
+						},
+					},
+				},
+				{
+					prefix: "aFolder",
+					rules: []Rule{
+						{
+							Regexp:  regexp.MustCompile("^(.*/)?globallyIgnoredFile$"),
+							Prefix:  "aFolder",
+							Pattern: "/locallyIgnoredFile",
+						},
+						{
+							Regexp:  regexp.MustCompile("^aFolder/ignoredSubFolder$"),
+							Pattern: "/ignoredSubFolder",
+						},
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n := &NoGo{
+				fs:              tt.fields.fs,
+				groups:          tt.fields.groups,
+				ignoreFileNames: tt.fields.ignoreFileNames,
+				matchNoParents:  tt.fields.matchNoParents,
+			}
+			if err := n.AddAll(); (err != nil) != tt.wantErr {
+				t.Errorf("NoGo.AddAll() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if !reflect.DeepEqual(n.groups, tt.wantGroups) {
+				t.Errorf("NoGo.AddAll() n.groups = %v, wantGroups %v", n.groups, tt.wantGroups)
+				return
 			}
 		})
 	}

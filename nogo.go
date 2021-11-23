@@ -459,7 +459,7 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 	pattern = strings.ReplaceAll(pattern, singleStar, "[^/]*")
 
 	// Now replace all still existing doubleStars and all stars by the single star rule.
-	// TODO: Not sure if that is the correct way.
+	// TODO: Not sure if that is the correct behavior.
 	pattern = strings.ReplaceAll(pattern, doubleStar, "[^/]*")
 
 	rule.Regexp, err = regexp.Compile("^" + regexp.QuoteMeta(prefix) + strings.TrimPrefix(pattern, "/") + "$")
