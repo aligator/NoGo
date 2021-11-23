@@ -2,6 +2,7 @@ package nogo
 
 import (
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -9,6 +10,89 @@ import (
 	"testing"
 
 	"github.com/spf13/afero"
+)
+
+func NewTestFS(t *testing.T) fs.FS {
+	memfs := afero.NewMemMapFs()
+
+	var testFS = map[string]string{
+		".gitignore":                                       "globallyIgnoredFile\naPartiallyIgnoredFolder/**\n!aPartiallyIgnoredFolder/.gitignore\naFolder/ignoredFile",
+		"aFile":                                            "",
+		"aFolder/ignoredFile":                              "",
+		"aFolder/notIgnored":                               "",
+		"aFolder/locallyIgnoredFile":                       "",
+		"aFolder/.gitignore":                               "/locallyIgnoredFile\n/ignoredSubFolder",
+		"aFolder/ignoredSubFolder/aFile":                   "",
+		"aFolder/ignoredSubFolder/anotherFile":             "",
+		"aPartiallyIgnoredFolder/.gitignore":               "!unignoredFile",
+		"aPartiallyIgnoredFolder/unignoredFile":            "",
+		"aPartiallyIgnoredFolder/ignoredFile":              "",
+		"aPartiallyIgnoredFolder/ignoredFolder/.gitignore": "notParsed as it is in an ignored folder",
+	}
+
+	for path, file := range testFS {
+		folder := filepath.Dir(path)
+		assert.NoError(t, memfs.MkdirAll(folder, os.ModeDir))
+		f, err := memfs.Create(path)
+		assert.NoError(t, err)
+		_, err = f.WriteString(file)
+		assert.NoError(t, err)
+	}
+
+	return afero.NewIOFS(memfs)
+}
+
+var (
+	TestFSGroups = []group{
+		{
+			prefix: "",
+			rules: []Rule{
+				{
+					Regexp:  regexp.MustCompile("^(.*/)?globallyIgnoredFile$"),
+					Pattern: "globallyIgnoredFile",
+				},
+				{
+					Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder/.*$"),
+					Pattern: "aPartiallyIgnoredFolder/**",
+				},
+				{
+					Regexp:  regexp.MustCompile(`^aPartiallyIgnoredFolder/\.gitignore$`),
+					Pattern: "!aPartiallyIgnoredFolder/.gitignore",
+					Negate:  true,
+				},
+				{
+					Regexp:  regexp.MustCompile(`^aFolder/ignoredFile$`),
+					Pattern: "aFolder/ignoredFile",
+				},
+			},
+		},
+		{
+			prefix: "aFolder",
+			rules: []Rule{
+				{
+					Regexp:  regexp.MustCompile("^aFolder/locallyIgnoredFile$"),
+					Prefix:  "aFolder",
+					Pattern: "/locallyIgnoredFile",
+				},
+				{
+					Regexp:  regexp.MustCompile("^aFolder/ignoredSubFolder$"),
+					Prefix:  "aFolder",
+					Pattern: "/ignoredSubFolder",
+				},
+			},
+		},
+		{
+			prefix: "aPartiallyIgnoredFolder",
+			rules: []Rule{
+				{
+					Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder(/.*|.*)/unignoredFile$"),
+					Prefix:  "aPartiallyIgnoredFolder",
+					Pattern: "!unignoredFile",
+					Negate:  true,
+				},
+			},
+		},
+	}
 )
 
 func TestCompile(t *testing.T) {
@@ -576,9 +660,9 @@ func TestCompile(t *testing.T) {
 			gotSkip, gotRule, err := Compile(tt.args.prefix, tt.args.pattern)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			assert.Equal(t, tt.wantRegexp, gotRule.Regexp.String())
@@ -597,35 +681,6 @@ func TestCompile(t *testing.T) {
 			}
 		})
 	}
-}
-
-func NewTestFS(t *testing.T) fs.FS {
-	memfs := afero.NewMemMapFs()
-
-	var testFS = map[string]string{
-		".gitignore":                                       "globallyIgnoredFile\naPartiallyIgnoredFolder/**\n!aPartiallyIgnoredFolder/.gitignore",
-		"aFolder/ignoredFile":                              "",
-		"aFolder/notIgnored":                               "",
-		"aFolder/locallyIgnoredFile":                       "",
-		"aFolder/.gitignore":                               "/locallyIgnoredFile\n/ignoredSubFolder",
-		"aFolder/ignoredSubFolder/aFile":                   "",
-		"aFolder/ignoredSubFolder/anotherFile":             "",
-		"aPartiallyIgnoredFolder/.gitignore":               "!unignoredFile",
-		"aPartiallyIgnoredFolder/unignoredFile":            "",
-		"aPartiallyIgnoredFolder/ignoredFile":              "",
-		"aPartiallyIgnoredFolder/ignoredFolder/.gitignore": "notParsed as it is in an ignored folder",
-	}
-
-	for path, file := range testFS {
-		folder := filepath.Dir(path)
-		assert.NoError(t, memfs.MkdirAll(folder, os.ModeDir))
-		f, err := memfs.Create(path)
-		assert.NoError(t, err)
-		_, err = f.WriteString(file)
-		assert.NoError(t, err)
-	}
-
-	return afero.NewIOFS(memfs)
 }
 
 func TestNoGo_AddAll(t *testing.T) {
@@ -647,53 +702,8 @@ func TestNoGo_AddAll(t *testing.T) {
 				fs:              NewTestFS(t),
 				ignoreFileNames: []string{".gitignore"},
 			},
-			wantErr: false,
-			wantGroups: []group{
-				{
-					prefix: "",
-					rules: []Rule{
-						{
-							Regexp:  regexp.MustCompile("^(.*/)?globallyIgnoredFile$"),
-							Pattern: "globallyIgnoredFile",
-						},
-						{
-							Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder/.*$"),
-							Pattern: "aPartiallyIgnoredFolder/**",
-						},
-						{
-							Regexp:  regexp.MustCompile(`^aPartiallyIgnoredFolder/\.gitignore$`),
-							Pattern: "!aPartiallyIgnoredFolder/.gitignore",
-							Negate:  true,
-						},
-					},
-				},
-				{
-					prefix: "aFolder",
-					rules: []Rule{
-						{
-							Regexp:  regexp.MustCompile("^aFolder/locallyIgnoredFile$"),
-							Prefix:  "aFolder",
-							Pattern: "/locallyIgnoredFile",
-						},
-						{
-							Regexp:  regexp.MustCompile("^aFolder/ignoredSubFolder$"),
-							Prefix:  "aFolder",
-							Pattern: "/ignoredSubFolder",
-						},
-					},
-				},
-				{
-					prefix: "aPartiallyIgnoredFolder",
-					rules: []Rule{
-						{
-							Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder(/.*|.*)/unignoredFile$"),
-							Prefix:  "aPartiallyIgnoredFolder",
-							Pattern: "!unignoredFile",
-							Negate:  true,
-						},
-					},
-				},
-			},
+			wantErr:    false,
+			wantGroups: TestFSGroups,
 		},
 	}
 	for _, tt := range tests {
@@ -707,12 +717,99 @@ func TestNoGo_AddAll(t *testing.T) {
 
 			err := n.AddAll()
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			assert.EqualValues(t, tt.wantGroups, n.groups)
+		})
+	}
+}
+
+func TestNoGo_MatchPathBecause(t *testing.T) {
+	type fields struct {
+		fs              fs.FS
+		groups          []group
+		ignoreFileNames []string
+		matchNoParents  bool
+	}
+	defaultConfig := func() fields {
+		return fields{
+			fs:              NewTestFS(t),
+			groups:          TestFSGroups,
+			ignoreFileNames: []string{".gitignore"},
+			matchNoParents:  false,
+		}
+	}
+
+	tests := []struct {
+		name        string
+		fields      fields
+		path        string
+		wantMatch   bool
+		wantBecause Result
+		wantErr     bool
+	}{
+		{
+			name:        "a not ignored aFile",
+			fields:      defaultConfig(),
+			path:        "aFile",
+			wantMatch:   false,
+			wantBecause: Result{},
+			wantErr:     false,
+		},
+		{
+			name:      "an ignored aFile",
+			fields:    defaultConfig(),
+			path:      "aFolder/ignoredFile",
+			wantMatch: true,
+			wantBecause: Result{
+				Rule: Rule{
+					Regexp:  regexp.MustCompile("^aFolder/ignoredFile$"),
+					Pattern: "aFolder/ignoredFile",
+				},
+				Found:       true,
+				ParentMatch: false,
+			},
+			wantErr: false,
+		},
+		{
+			name:      "an unignored aFile",
+			fields:    defaultConfig(),
+			path:      "aPartiallyIgnoredFolder/unignoredFile",
+			wantMatch: false,
+			wantBecause: Result{
+				Rule: Rule{
+					Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder(/.*|.*)/unignoredFile$"),
+					Prefix:  "aPartiallyIgnoredFolder",
+					Pattern: "!unignoredFile",
+					Negate:  true,
+				},
+				Found:       true,
+				ParentMatch: false,
+			},
+			wantErr: false,
+		},
+		// TODO: more tests
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n := &NoGo{
+				fs:              tt.fields.fs,
+				groups:          tt.fields.groups,
+				ignoreFileNames: tt.fields.ignoreFileNames,
+				matchNoParents:  tt.fields.matchNoParents,
+			}
+			gotMatch, gotBecause, err := n.MatchPathBecause(tt.path)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			assert.Equal(t, tt.wantMatch, gotMatch)
+			assert.EqualValues(t, tt.wantBecause, gotBecause)
 		})
 	}
 }
