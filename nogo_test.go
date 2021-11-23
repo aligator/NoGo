@@ -1,10 +1,10 @@
 package nogo
 
 import (
+	"github.com/stretchr/testify/assert"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"testing"
 
@@ -574,41 +574,28 @@ func TestCompile(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.args.pattern+"|"+tt.name, func(t *testing.T) {
 			gotSkip, gotRule, err := Compile(tt.args.prefix, tt.args.pattern)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Compile() error = %v, wantErr %v", err, tt.wantErr)
-				return
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 
-			if gotRule.Regexp.String() != tt.wantRegexp {
-				t.Errorf("Compile() gotRule.Regexp.String() = %v, want %v", gotRule.Regexp.String(), tt.wantRegexp)
-			}
-			if gotRule.Negate != tt.wantNegate {
-				t.Errorf("Compile() gotRule.Negate = %v, want %v", gotRule.Negate, tt.wantNegate)
-			}
-			if gotRule.OnlyFolder != tt.wantOnlyFolder {
-				t.Errorf("Compile() gotRule.OnlyFolder = %v, want %v", gotRule.OnlyFolder, tt.wantOnlyFolder)
-			}
-
-			if gotSkip != tt.wantSkip {
-				t.Errorf("Compile() gotSkip = %v, want %v", gotSkip, tt.wantSkip)
+			assert.Equal(t, tt.wantRegexp, gotRule.Regexp.String())
+			assert.Equal(t, tt.wantNegate, gotRule.Negate)
+			assert.Equal(t, tt.wantOnlyFolder, gotRule.OnlyFolder)
+			assert.Equal(t, tt.wantSkip, gotSkip)
+			if gotSkip {
 				return
 			}
 
 			for _, match := range tt.wantMatches {
 				t.Run(match.input+"|"+match.name, func(t *testing.T) {
 					gotMatches := gotRule.Regexp.MatchString(match.input)
-					if gotMatches != match.matches {
-						t.Errorf("gotRule.MatchString(\"%v\") = %v, want %v", match.input, gotMatches, match.matches)
-					}
+					assert.Equal(t, match.matches, gotMatches)
 				})
 			}
 		})
-	}
-}
-
-func Must(t *testing.T, err error) {
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -616,25 +603,26 @@ func NewTestFS(t *testing.T) fs.FS {
 	memfs := afero.NewMemMapFs()
 
 	var testFS = map[string]string{
-		".gitignore":                            "globallyIgnoredFile\naPartiallyIgnoredFolder/**\n!naPartiallyIgnoredFolder/.gitignore",
-		"aFolder/ignoredFile":                   "",
-		"aFolder/notIgnored":                    "",
-		"aFolder/locallyIgnoredFile":            "",
-		"aFolder/.gitignore":                    "/locallyIgnoredFile\n/ignoredSubFolder",
-		"aFolder/ignoredSubFolder/aFile":        "",
-		"aFolder/ignoredSubFolder/anotherFile":  "",
-		"aPartiallyIgnoredFolder/.gitignore":    "!unignoredFile",
-		"aPartiallyIgnoredFolder/unignoredFile": "",
-		"aPartiallyIgnoredFolder/ignoredFile":   "",
+		".gitignore":                                       "globallyIgnoredFile\naPartiallyIgnoredFolder/**\n!aPartiallyIgnoredFolder/.gitignore",
+		"aFolder/ignoredFile":                              "",
+		"aFolder/notIgnored":                               "",
+		"aFolder/locallyIgnoredFile":                       "",
+		"aFolder/.gitignore":                               "/locallyIgnoredFile\n/ignoredSubFolder",
+		"aFolder/ignoredSubFolder/aFile":                   "",
+		"aFolder/ignoredSubFolder/anotherFile":             "",
+		"aPartiallyIgnoredFolder/.gitignore":               "!unignoredFile",
+		"aPartiallyIgnoredFolder/unignoredFile":            "",
+		"aPartiallyIgnoredFolder/ignoredFile":              "",
+		"aPartiallyIgnoredFolder/ignoredFolder/.gitignore": "notParsed as it is in an ignored folder",
 	}
 
 	for path, file := range testFS {
 		folder := filepath.Dir(path)
-		Must(t, memfs.MkdirAll(folder, os.ModeDir))
+		assert.NoError(t, memfs.MkdirAll(folder, os.ModeDir))
 		f, err := memfs.Create(path)
-		Must(t, err)
+		assert.NoError(t, err)
 		_, err = f.WriteString(file)
-		Must(t, err)
+		assert.NoError(t, err)
 	}
 
 	return afero.NewIOFS(memfs)
@@ -654,7 +642,7 @@ func TestNoGo_AddAll(t *testing.T) {
 		wantGroups []group
 	}{
 		{
-			name: "load the fake testFS",
+			name: "ignore files in NewTestFS() are parsed correctly",
 			fields: fields{
 				fs:              NewTestFS(t),
 				ignoreFileNames: []string{".gitignore"},
@@ -671,11 +659,10 @@ func TestNoGo_AddAll(t *testing.T) {
 						{
 							Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder/.*$"),
 							Pattern: "aPartiallyIgnoredFolder/**",
-							Negate:  true,
 						},
 						{
-							Regexp:  regexp.MustCompile(`^naPartiallyIgnoredFolder/\.gitignore$`),
-							Pattern: "!naPartiallyIgnoredFolder/.gitignore",
+							Regexp:  regexp.MustCompile(`^aPartiallyIgnoredFolder/\.gitignore$`),
+							Pattern: "!aPartiallyIgnoredFolder/.gitignore",
 							Negate:  true,
 						},
 					},
@@ -684,13 +671,25 @@ func TestNoGo_AddAll(t *testing.T) {
 					prefix: "aFolder",
 					rules: []Rule{
 						{
-							Regexp:  regexp.MustCompile("^(.*/)?globallyIgnoredFile$"),
+							Regexp:  regexp.MustCompile("^aFolder/locallyIgnoredFile$"),
 							Prefix:  "aFolder",
 							Pattern: "/locallyIgnoredFile",
 						},
 						{
 							Regexp:  regexp.MustCompile("^aFolder/ignoredSubFolder$"),
+							Prefix:  "aFolder",
 							Pattern: "/ignoredSubFolder",
+						},
+					},
+				},
+				{
+					prefix: "aPartiallyIgnoredFolder",
+					rules: []Rule{
+						{
+							Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder(/.*|.*)/unignoredFile$"),
+							Prefix:  "aPartiallyIgnoredFolder",
+							Pattern: "!unignoredFile",
+							Negate:  true,
 						},
 					},
 				},
@@ -705,14 +704,15 @@ func TestNoGo_AddAll(t *testing.T) {
 				ignoreFileNames: tt.fields.ignoreFileNames,
 				matchNoParents:  tt.fields.matchNoParents,
 			}
-			if err := n.AddAll(); (err != nil) != tt.wantErr {
-				t.Errorf("NoGo.AddAll() error = %v, wantErr %v", err, tt.wantErr)
+
+			err := n.AddAll()
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 
-			if !reflect.DeepEqual(n.groups, tt.wantGroups) {
-				t.Errorf("NoGo.AddAll() n.groups = %v, wantGroups %v", n.groups, tt.wantGroups)
-				return
-			}
+			assert.EqualValues(t, tt.wantGroups, n.groups)
 		})
 	}
 }
