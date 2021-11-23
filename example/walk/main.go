@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	"github.com/aligator/nogo"
 	"io/fs"
-	"nogo"
 	"os"
 )
 

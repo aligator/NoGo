@@ -1,4 +1,4 @@
-module nogo
+module github.com/aligator/nogo
 
 go 1.17
 

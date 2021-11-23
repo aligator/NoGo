@@ -5,8 +5,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/aligator/nogo"
 	"io/fs"
-	"nogo"
 	"os"
 	"strings"
 )
