@@ -375,10 +375,6 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 	// Else it may be anywhere bellow it and we have to apply a wildcard
 	if strings.Count(strings.TrimSuffix(pattern, "/"), "/") == 0 {
 		pattern = "**/" + strings.TrimPrefix(pattern, "/")
-
-		// Also remove a possible '/' from the prefix so that it concatenates correctly with the wildcard
-		prefix = strings.TrimSuffix(prefix, "/")
-
 	} else if prefix != "" {
 		// In most other cases we have to make sure the prefix ends with a '/'
 		prefix = strings.TrimSuffix(prefix, "/") + "/"
@@ -443,7 +439,11 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 		if prefix == "" {
 			pattern = "(.*/)?" + strings.TrimPrefix(pattern, doubleStar+"/")
 		} else {
-			pattern = "(/.*|.*)" + strings.TrimPrefix(pattern, doubleStar)
+			pattern = "(/.*)?" + strings.TrimPrefix(pattern, doubleStar)
+
+			// Also remove a possible '/' from the prefix so that it concatenates correctly with the wildcard
+			prefix = strings.TrimSuffix(prefix, "/")
+
 		}
 	}
 

@@ -55,7 +55,7 @@ var (
 			prefix: "aPartiallyIgnoredFolder",
 			rules: []Rule{
 				{
-					Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder(/.*|.*)/unignoredFile$"),
+					Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder(/.*)?/unignoredFile$"),
 					Prefix:  "aPartiallyIgnoredFolder",
 					Pattern: "!unignoredFile",
 					Negate:  true,
@@ -85,6 +85,11 @@ var (
 					Prefix:  "glob-tests",
 					Pattern: "/file**withDoubleStar", // Actually this resolves to a single star as the double star only has special meaning at the beginning or end of a filename.
 				},
+				{
+					Regexp:  regexp.MustCompile("^glob-tests(/.*)?/foo$"),
+					Prefix:  "glob-tests",
+					Pattern: "**/foo",
+				},
 			},
 		},
 	}
@@ -110,7 +115,7 @@ var testFS = map[string]struct {
 	"aFolder/anotherFolder/globallyIgnored":                        {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: false}},
 	"aFolder/anotherFolder/globallyIgnored/aFileInGloballyIgnored": {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: true}},
 
-	"glob-tests/.gitignore": {"/file*withStar\n/question?mark??file???\n/file[a-z]with[!0-9]ranges\n/file**withDoubleStar", nil},
+	"glob-tests/.gitignore": {"/file*withStar\n/question?mark??file???\n/file[a-z]with[!0-9]ranges\n/file**withDoubleStar\n**/foo", nil},
 	// star
 	"glob-tests/file42withStar":  {"", &Result{Rule: TestFSGroups[3].rules[0], Found: true, ParentMatch: false}},
 	"glob-tests/filewithStar":    {"", &Result{Rule: TestFSGroups[3].rules[0], Found: true, ParentMatch: false}},
@@ -259,7 +264,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "aFile",
 			},
-			wantRegexp: "^a/folder(/.*|.*)/aFile$",
+			wantRegexp: "^a/folder(/.*)?/aFile$",
 			wantMatches: []matches{
 				{
 					name:    "the file in the root",
@@ -601,7 +606,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "\\#aFile",
 			},
-			wantRegexp: "^a/folder(/.*|.*)/#aFile$",
+			wantRegexp: "^a/folder(/.*)?/#aFile$",
 			wantMatches: []matches{
 				{
 					name:    "exact file",
