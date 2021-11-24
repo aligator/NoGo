@@ -1,4 +1,4 @@
-# NoGo
+# NoGo [![test](https://github.com/aligator/nogo/actions/workflows/test.yaml/badge.svg)](https://github.com/aligator/nogo/actions/workflows/test.yaml) [![CodeQL](https://github.com/aligator/nogo/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/aligator/nogo/actions/workflows/codeql-analysis.yml)
 A .gitignore parser for Go.
 
 ## Features
