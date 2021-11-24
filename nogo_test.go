@@ -90,6 +90,16 @@ var (
 					Prefix:  "glob-tests",
 					Pattern: "**/foo",
 				},
+				{
+					Regexp:  regexp.MustCompile("^glob-tests/any/.*$"),
+					Prefix:  "glob-tests",
+					Pattern: "any/**",
+				},
+				{
+					Regexp:  regexp.MustCompile("^glob-tests/something.*/more$"),
+					Prefix:  "glob-tests",
+					Pattern: "something/**/more",
+				},
 			},
 		},
 	}
@@ -115,7 +125,7 @@ var testFS = map[string]struct {
 	"aFolder/anotherFolder/globallyIgnored":                        {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: false}},
 	"aFolder/anotherFolder/globallyIgnored/aFileInGloballyIgnored": {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: true}},
 
-	"glob-tests/.gitignore": {"/file*withStar\n/question?mark??file???\n/file[a-z]with[!0-9]ranges\n/file**withDoubleStar\n**/foo", nil},
+	"glob-tests/.gitignore": {"/file*withStar\n/question?mark??file???\n/file[a-z]with[!0-9]ranges\n/file**withDoubleStar\n**/foo\nany/**\nsomething/**/more", nil},
 	// star
 	"glob-tests/file42withStar":  {"", &Result{Rule: TestFSGroups[3].rules[0], Found: true, ParentMatch: false}},
 	"glob-tests/filewithStar":    {"", &Result{Rule: TestFSGroups[3].rules[0], Found: true, ParentMatch: false}},
@@ -140,6 +150,26 @@ var testFS = map[string]struct {
 	"glob-tests/file42withDoubleStar":  {"", &Result{Rule: TestFSGroups[3].rules[3], Found: true, ParentMatch: false}},
 	"glob-tests/filewithDoubleStar":    {"", &Result{Rule: TestFSGroups[3].rules[3], Found: true, ParentMatch: false}},
 	"glob-tests/file4/2withDoubleStar": {"", nil},
+
+	// **/foo
+	"glob-tests/foo":      {"", &Result{Rule: TestFSGroups[3].rules[4], Found: true, ParentMatch: false}},
+	"glob-tests/bar/foo":  {"", &Result{Rule: TestFSGroups[3].rules[4], Found: true, ParentMatch: false}},
+	"glob-tests/bar/ffoo": {"", nil},
+	"glob-tests/barfoo":   {"", nil},
+	"glob-tests/foo/bar":  {"", &Result{Rule: TestFSGroups[3].rules[4], Found: true, ParentMatch: true}},
+
+	// any/**
+	"glob-tests/any":         {"", nil},
+	"glob-tests/any/foo/bar": {"", &Result{Rule: TestFSGroups[3].rules[5], Found: true, ParentMatch: false}},
+	"glob-tests/any/foo":     {"", &Result{Rule: TestFSGroups[3].rules[5], Found: true, ParentMatch: false}},
+	"glob-tests/anyfoo/bar":  {"", nil},
+
+	// something/**/more
+	"glob-tests/something/more":                     {"", &Result{Rule: TestFSGroups[3].rules[6], Found: true, ParentMatch: false}},
+	"glob-tests/something/much/much/more":           {"", &Result{Rule: TestFSGroups[3].rules[6], Found: true, ParentMatch: false}},
+	"glob-tests/something/much/much/more/andMOOORE": {"", &Result{Rule: TestFSGroups[3].rules[6], Found: true, ParentMatch: true}},
+	"glob-tests/something":                          {"", nil},
+	"glob-tests/somethingmore":                      {"", nil},
 }
 
 func NewTestFS(t *testing.T) fs.FS {
