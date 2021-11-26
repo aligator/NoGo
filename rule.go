@@ -11,7 +11,7 @@ type Rule struct {
 }
 
 var (
-	GitIgnoreRule = MustCompileAll("", []byte("/.git/\n/.git/**"))
+	GitIgnoreRule = MustCompileAll("", []byte(".git"))
 )
 
 func (r Rule) MatchPath(path string) Result {
