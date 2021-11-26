@@ -12,44 +12,14 @@ import (
 	"github.com/spf13/afero"
 )
 
-func NewTestFS(t *testing.T) fs.FS {
-	memfs := afero.NewMemMapFs()
-
-	var testFS = map[string]string{
-		".gitignore":                                       "globallyIgnoredFile\naPartiallyIgnoredFolder/**\n!aPartiallyIgnoredFolder/.gitignore\naFolder/ignoredFile",
-		"aFile":                                            "",
-		"aFolder/ignoredFile":                              "",
-		"aFolder/notIgnored":                               "",
-		"aFolder/locallyIgnoredFile":                       "",
-		"aFolder/.gitignore":                               "/locallyIgnoredFile\n/ignoredSubFolder",
-		"aFolder/ignoredSubFolder/aFile":                   "",
-		"aFolder/ignoredSubFolder/anotherFile":             "",
-		"aPartiallyIgnoredFolder/.gitignore":               "!unignoredFile",
-		"aPartiallyIgnoredFolder/unignoredFile":            "",
-		"aPartiallyIgnoredFolder/ignoredFile":              "",
-		"aPartiallyIgnoredFolder/ignoredFolder/.gitignore": "notParsed as it is in an ignored folder",
-	}
-
-	for path, file := range testFS {
-		folder := filepath.Dir(path)
-		assert.NoError(t, memfs.MkdirAll(folder, os.ModeDir))
-		f, err := memfs.Create(path)
-		assert.NoError(t, err)
-		_, err = f.WriteString(file)
-		assert.NoError(t, err)
-	}
-
-	return afero.NewIOFS(memfs)
-}
-
 var (
 	TestFSGroups = []group{
 		{
 			prefix: "",
 			rules: []Rule{
 				{
-					Regexp:  regexp.MustCompile("^(.*/)?globallyIgnoredFile$"),
-					Pattern: "globallyIgnoredFile",
+					Regexp:  regexp.MustCompile("^(.*/)?globallyIgnored$"),
+					Pattern: "globallyIgnored",
 				},
 				{
 					Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder/.*$"),
@@ -85,15 +55,137 @@ var (
 			prefix: "aPartiallyIgnoredFolder",
 			rules: []Rule{
 				{
-					Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder(/.*|.*)/unignoredFile$"),
+					Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder(/.*)?/unignoredFile$"),
 					Prefix:  "aPartiallyIgnoredFolder",
 					Pattern: "!unignoredFile",
 					Negate:  true,
 				},
 			},
 		},
+		{
+			prefix: "glob-tests",
+			rules: []Rule{
+				{
+					Regexp:  regexp.MustCompile("^glob-tests/file[^/]*withStar$"),
+					Prefix:  "glob-tests",
+					Pattern: "/file*withStar",
+				},
+				{
+					Regexp:  regexp.MustCompile("^glob-tests/question[^/]?mark[^/]?[^/]?file[^/]?[^/]?[^/]?$"),
+					Prefix:  "glob-tests",
+					Pattern: "/question?mark??file???",
+				},
+				{
+					Regexp:  regexp.MustCompile("^glob-tests/file[a-z]with[^0-9]ranges$"),
+					Prefix:  "glob-tests",
+					Pattern: "/file[a-z]with[!0-9]ranges",
+				},
+				{
+					Regexp:  regexp.MustCompile("^glob-tests/file[^/]*withDoubleStar$"),
+					Prefix:  "glob-tests",
+					Pattern: "/file**withDoubleStar", // Actually this resolves to a single star as the double star only has special meaning at the beginning or end of a filename.
+				},
+				{
+					Regexp:  regexp.MustCompile("^glob-tests(/.*)?/foo$"),
+					Prefix:  "glob-tests",
+					Pattern: "**/foo",
+				},
+				{
+					Regexp:  regexp.MustCompile("^glob-tests/any/.*$"),
+					Prefix:  "glob-tests",
+					Pattern: "any/**",
+				},
+				{
+					Regexp:  regexp.MustCompile("^glob-tests/something.*/more$"),
+					Prefix:  "glob-tests",
+					Pattern: "something/**/more",
+				},
+			},
+		},
 	}
 )
+
+var testFS = map[string]struct {
+	data      string
+	ignoredBy *Result
+}{
+	".gitignore":                                                   {"globallyIgnored\naPartiallyIgnoredFolder/**\n!aPartiallyIgnoredFolder/.gitignore\naFolder/ignoredFile", nil},
+	"globallyIgnored":                                              {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: false}},
+	"aFile":                                                        {"", nil},
+	"aFolder/ignoredFile":                                          {"", &Result{Rule: TestFSGroups[0].rules[3], Found: true, ParentMatch: false}},
+	"aFolder/notIgnored":                                           {"", nil},
+	"aFolder/locallyIgnoredFile":                                   {"", &Result{Rule: TestFSGroups[1].rules[0], Found: true, ParentMatch: false}},
+	"aFolder/.gitignore":                                           {"/locallyIgnoredFile\n/ignoredSubFolder", nil},
+	"aFolder/ignoredSubFolder/aFile":                               {"", &Result{Rule: TestFSGroups[1].rules[1], Found: true, ParentMatch: true}},
+	"aFolder/ignoredSubFolder/anotherFile":                         {"", &Result{Rule: TestFSGroups[1].rules[1], Found: true, ParentMatch: true}},
+	"aPartiallyIgnoredFolder/.gitignore":                           {"!unignoredFile", &Result{Rule: TestFSGroups[0].rules[2], Found: true, ParentMatch: false}},
+	"aPartiallyIgnoredFolder/unignoredFile":                        {"", &Result{Rule: TestFSGroups[2].rules[0], Found: true, ParentMatch: false}},
+	"aPartiallyIgnoredFolder/ignoredFile":                          {"", &Result{Rule: TestFSGroups[0].rules[1], Found: true, ParentMatch: false}},
+	"aPartiallyIgnoredFolder/ignoredFolder/.gitignore":             {"notParsed as it is in an ignored folder", &Result{Rule: TestFSGroups[0].rules[1], Found: true, ParentMatch: false}},
+	"aFolder/anotherFolder/globallyIgnored":                        {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: false}},
+	"aFolder/anotherFolder/globallyIgnored/aFileInGloballyIgnored": {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: true}},
+
+	"glob-tests/.gitignore": {"/file*withStar\n/question?mark??file???\n/file[a-z]with[!0-9]ranges\n/file**withDoubleStar\n**/foo\nany/**\nsomething/**/more", nil},
+	// star
+	"glob-tests/file42withStar":  {"", &Result{Rule: TestFSGroups[3].rules[0], Found: true, ParentMatch: false}},
+	"glob-tests/filewithStar":    {"", &Result{Rule: TestFSGroups[3].rules[0], Found: true, ParentMatch: false}},
+	"glob-tests/file4/2withStar": {"", nil},
+
+	// question mark
+	"glob-tests/questionmarkfile":       {"", &Result{Rule: TestFSGroups[3].rules[1], Found: true, ParentMatch: false}},
+	"glob-tests/question0mark42file123": {"", &Result{Rule: TestFSGroups[3].rules[1], Found: true, ParentMatch: false}},
+	"glob-tests/questionämarköfileü":    {"", &Result{Rule: TestFSGroups[3].rules[1], Found: true, ParentMatch: false}},
+	"glob-tests/question/markfile":      {"", nil},
+
+	// question mark
+	"glob-tests/filefwith-ranges": {"", &Result{Rule: TestFSGroups[3].rules[2], Found: true, ParentMatch: false}},
+	// TODO: Actually I am not sure if a not-existing char still should match...
+	"glob-tests/filewithranges":   {"", nil},
+	"glob-tests/fileAwithAranges": {"", nil},
+	"glob-tests/fileawith5ranges": {"", nil},
+	// TODO: Actually I am not sure if slashes are allowed in this case...
+	"glob-tests/filegwith/ranges": {"", &Result{Rule: TestFSGroups[3].rules[2], Found: true, ParentMatch: false}},
+
+	// double star  // Actually this resolves to a single star as the double star only has special meaning at the beginning or end of a filename.
+	"glob-tests/file42withDoubleStar":  {"", &Result{Rule: TestFSGroups[3].rules[3], Found: true, ParentMatch: false}},
+	"glob-tests/filewithDoubleStar":    {"", &Result{Rule: TestFSGroups[3].rules[3], Found: true, ParentMatch: false}},
+	"glob-tests/file4/2withDoubleStar": {"", nil},
+
+	// **/foo
+	"glob-tests/foo":      {"", &Result{Rule: TestFSGroups[3].rules[4], Found: true, ParentMatch: false}},
+	"glob-tests/bar/foo":  {"", &Result{Rule: TestFSGroups[3].rules[4], Found: true, ParentMatch: false}},
+	"glob-tests/bar/ffoo": {"", nil},
+	"glob-tests/barfoo":   {"", nil},
+	"glob-tests/foo/bar":  {"", &Result{Rule: TestFSGroups[3].rules[4], Found: true, ParentMatch: true}},
+
+	// any/**
+	"glob-tests/any":         {"", nil},
+	"glob-tests/any/foo/bar": {"", &Result{Rule: TestFSGroups[3].rules[5], Found: true, ParentMatch: false}},
+	"glob-tests/any/foo":     {"", &Result{Rule: TestFSGroups[3].rules[5], Found: true, ParentMatch: false}},
+	"glob-tests/anyfoo/bar":  {"", nil},
+
+	// something/**/more
+	"glob-tests/something/more":                     {"", &Result{Rule: TestFSGroups[3].rules[6], Found: true, ParentMatch: false}},
+	"glob-tests/something/much/much/more":           {"", &Result{Rule: TestFSGroups[3].rules[6], Found: true, ParentMatch: false}},
+	"glob-tests/something/much/much/more/andMOOORE": {"", &Result{Rule: TestFSGroups[3].rules[6], Found: true, ParentMatch: true}},
+	"glob-tests/something":                          {"", nil},
+	"glob-tests/somethingmore":                      {"", nil},
+}
+
+func NewTestFS(t *testing.T) fs.FS {
+	memfs := afero.NewMemMapFs()
+
+	for path, file := range testFS {
+		folder := filepath.Dir(path)
+		assert.NoError(t, memfs.MkdirAll(folder, os.ModeDir))
+		f, err := memfs.Create(path)
+		assert.NoError(t, err)
+		_, err = f.WriteString(file.data)
+		assert.NoError(t, err)
+	}
+
+	return afero.NewIOFS(memfs)
+}
 
 func TestCompile(t *testing.T) {
 	type args struct {
@@ -202,7 +294,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "aFile",
 			},
-			wantRegexp: "^a/folder(/.*|.*)/aFile$",
+			wantRegexp: "^a/folder(/.*)?/aFile$",
 			wantMatches: []matches{
 				{
 					name:    "the file in the root",
@@ -544,7 +636,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "\\#aFile",
 			},
-			wantRegexp: "^a/folder(/.*|.*)/#aFile$",
+			wantRegexp: "^a/folder(/.*)?/#aFile$",
 			wantMatches: []matches{
 				{
 					name:    "exact file",
@@ -728,88 +820,27 @@ func TestNoGo_AddAll(t *testing.T) {
 }
 
 func TestNoGo_MatchPathBecause(t *testing.T) {
-	type fields struct {
-		fs              fs.FS
-		groups          []group
-		ignoreFileNames []string
-		matchNoParents  bool
-	}
-	defaultConfig := func() fields {
-		return fields{
-			fs:              NewTestFS(t),
-			groups:          TestFSGroups,
-			ignoreFileNames: []string{".gitignore"},
-			matchNoParents:  false,
-		}
-	}
-
-	tests := []struct {
-		name        string
-		fields      fields
-		path        string
-		wantMatch   bool
-		wantBecause Result
-		wantErr     bool
-	}{
-		{
-			name:        "a not ignored aFile",
-			fields:      defaultConfig(),
-			path:        "aFile",
-			wantMatch:   false,
-			wantBecause: Result{},
-			wantErr:     false,
-		},
-		{
-			name:      "an ignored aFile",
-			fields:    defaultConfig(),
-			path:      "aFolder/ignoredFile",
-			wantMatch: true,
-			wantBecause: Result{
-				Rule: Rule{
-					Regexp:  regexp.MustCompile("^aFolder/ignoredFile$"),
-					Pattern: "aFolder/ignoredFile",
-				},
-				Found:       true,
-				ParentMatch: false,
-			},
-			wantErr: false,
-		},
-		{
-			name:      "an unignored aFile",
-			fields:    defaultConfig(),
-			path:      "aPartiallyIgnoredFolder/unignoredFile",
-			wantMatch: false,
-			wantBecause: Result{
-				Rule: Rule{
-					Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder(/.*|.*)/unignoredFile$"),
-					Prefix:  "aPartiallyIgnoredFolder",
-					Pattern: "!unignoredFile",
-					Negate:  true,
-				},
-				Found:       true,
-				ParentMatch: false,
-			},
-			wantErr: false,
-		},
-		// TODO: more tests
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for path, tt := range testFS {
+		t.Run(path, func(t *testing.T) {
 			n := &NoGo{
-				fs:              tt.fields.fs,
-				groups:          tt.fields.groups,
-				ignoreFileNames: tt.fields.ignoreFileNames,
-				matchNoParents:  tt.fields.matchNoParents,
+				fs:              NewTestFS(t),
+				groups:          TestFSGroups,
+				ignoreFileNames: []string{".gitignore"},
+				matchNoParents:  false,
 			}
-			gotMatch, gotBecause, err := n.MatchPathBecause(tt.path)
-			if tt.wantErr {
-				require.Error(t, err)
+			gotMatch, gotBecause, err := n.MatchPathBecause(path)
+
+			require.NoError(t, err)
+
+			if gotBecause.Negate {
+				assert.Equal(t, tt.ignoredBy == nil, gotMatch)
 			} else {
-				require.NoError(t, err)
+				assert.Equal(t, tt.ignoredBy != nil, gotMatch)
 			}
 
-			assert.Equal(t, tt.wantMatch, gotMatch)
-			assert.EqualValues(t, tt.wantBecause, gotBecause)
+			if tt.ignoredBy != nil {
+				assert.EqualValues(t, *tt.ignoredBy, gotBecause)
+			}
 		})
 	}
 }
