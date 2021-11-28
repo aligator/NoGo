@@ -342,7 +342,7 @@ var (
 )
 
 // Compile the pattern into a single regexp.
-// skip means that this pattern doesn't contain any rule (e.g. just a comment or empty line).zz
+// skip means that this pattern doesn't contain any rule (e.g. just a comment or empty line).
 func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 	rule = Rule{
 		Prefix: prefix,
