@@ -4,12 +4,11 @@ A .gitignore parser for Go.
 ## Features
 * parsing .gitignore files
 * loading file trees with several .gitignore files
-* fs.WalkDir and afero.Walk wrappers which ignore all ignored files
-* full compatibility with git
+* fs.WalkDir WalkDirFunc implementation (and afero.Walk (see below))
 * customizable ignore filename (instead of .gitignore)
-
+* full compatibility with git  
 As far as I could test it, it handles .gitignore files the same way as git.  
-If you find an inconsistency with git, create a new Issue.  
+If you find an inconsistency with git, please create a new Issue.  
 The goal is to provide the exact same .gitignore handling.
 
 ## Usage
@@ -39,10 +38,10 @@ NoGo can be used with fs.WalkDir. [Just see the example walk.](example/walk/main
 If you need to use another Walk function, you can build your own wrapper using 
 the `NoGo.WalkFN` function. 
 
-Example:
+Example for afero:
 I intentionally did not include this to avoid a new dependency
-just because of afero-compatibility. However as you can see it is not that 
-hard to use this:
+just because of afero-compatibility. However, as you can see, it is not that 
+hard to build your own:
 ```go
 package main
 
