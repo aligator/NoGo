@@ -322,17 +322,28 @@ func (n *NoGo) MatchPathBecauseNoStat(path string, isDir bool) (match bool, beca
 
 	return because.Found, because
 }
+	
+// These bytes won't be in any valid file, so they should be perfectly valid as temporary replacement.
+const (
+	doubleStar        = "\000"
+	singleStar        = "\001"
+	questionMark      = "\002"
+	negatedMatchStart = "\003"
+	matchStart        = "\004"
+	matchEnd          = "\005"
+	escapedMatchStart = "\006"
+	escapedMatchEnd   = "\007"
+)
+
+var (
+	// findRangeReg matches the replacements of [, [! and ].
+	// The ? in the regexp enables ungreedy mode.
+	findRangeReg = regexp.MustCompile(`[` + matchStart + negatedMatchStart + `].*?` + matchEnd)
+)
 
 // Compile the pattern into a single regexp.
-// skip means that this pattern doesn't contain any rule (e.g. just a comment or empty line).zz
+// skip means that this pattern doesn't contain any rule (e.g. just a comment or empty line).
 func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
-	// Just make sure the regexp exists in all cases.
-	defer func() {
-		if rule.Regexp == nil {
-			rule.Regexp = regexp.MustCompile("")
-		}
-	}()
-
 	rule = Rule{
 		Prefix: prefix,
 
@@ -347,7 +358,7 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 
 	// ignoreFs lines starting with # as these are comments.
 	if pattern[0] == '#' {
-		return true, Rule{Regexp: regexp.MustCompile("")}, nil
+		return true, Rule{}, nil
 	}
 
 	// Unescape \# to #.
@@ -382,43 +393,30 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 
 	// Replace all special chars with placeholders, then quote the rest.
 	// After that the special regexp for that special cases can be replaced.
-	// These bytes won't be in any valid file, so they should be perfectly valid as replacement.
-	const (
-		doubleStar        = "\000"
-		singleStar        = "\001"
-		questionMark      = "\002"
-		negatedMatchStart = "\003"
-		escapedMatchStart = "\004"
-		escapedMatchEnd   = "\005"
-	)
 
 	pattern = strings.ReplaceAll(pattern, "**", doubleStar)
 	pattern = strings.ReplaceAll(pattern, "*", singleStar)
 	pattern = strings.ReplaceAll(pattern, "?", questionMark)
 
 	// Re-Replace escaped replacements.
-	pattern = strings.ReplaceAll(pattern, "\\"+doubleStar, "**")
-	pattern = strings.ReplaceAll(pattern, "\\"+singleStar, "*")
-	pattern = strings.ReplaceAll(pattern, "\\"+questionMark, "?")
+	pattern = strings.ReplaceAll(pattern, `\`+doubleStar, "**")
+	pattern = strings.ReplaceAll(pattern, `\`+singleStar, "*")
+	pattern = strings.ReplaceAll(pattern, `\`+questionMark, "?")
 
 	pattern = regexp.QuoteMeta(pattern)
 
 	// Unescape and transform character matches.
 	// First replace all by the input escaped brackets to ignore them in the next replaces)
-	pattern = strings.ReplaceAll(pattern, "\\\\[", escapedMatchStart)
-	pattern = strings.ReplaceAll(pattern, "\\\\]", escapedMatchEnd)
+	pattern = strings.ReplaceAll(pattern, `\\[`, escapedMatchStart)
+	pattern = strings.ReplaceAll(pattern, `\\]`, escapedMatchEnd)
 
-	// THen do the same with the negated one to ignore its bracket in the next replace.
-	pattern = strings.ReplaceAll(pattern, "\\[!", negatedMatchStart)
-	pattern = strings.ReplaceAll(pattern, "\\[", "[")
-	// Replace that one back with the regexp compatible negation.
-	pattern = strings.ReplaceAll(pattern, negatedMatchStart, "[^")
-	// Replace the bracket ending
-	pattern = strings.ReplaceAll(pattern, "\\]", "]")
+	// Then do the same with the negated one to ignore its bracket in the next replace.
+	pattern = strings.ReplaceAll(pattern, `\[!`, negatedMatchStart)
+	pattern = strings.ReplaceAll(pattern, `\[`, matchStart)
+	pattern = strings.ReplaceAll(pattern, `\]`, matchEnd)
+	// Now we can add any new regexp using [ and ] and still 
+	// Do something with the placeholders later.
 
-	// Now replace back the escaped brackets.
-	pattern = strings.ReplaceAll(pattern, escapedMatchStart, "[")
-	pattern = strings.ReplaceAll(pattern, escapedMatchEnd, "]")
 
 	// If any '/' is at the end, it matches only folders.
 	// Note, as the input does not show us if it is a folder, the bool
@@ -462,7 +460,37 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 	// TODO: Not sure if that is the correct behavior.
 	pattern = strings.ReplaceAll(pattern, doubleStar, "[^/]*")
 
-	rule.Regexp, err = regexp.Compile("^" + regexp.QuoteMeta(prefix) + strings.TrimPrefix(pattern, "/") + "$")
+	// Add an additional regexp which checks for non-slash on all range patterns.
+	// As the range should not match slashes, but as Go doesn't support look-ahead,
+	// I just add a new rule for this.
+	additionalPattern := findRangeReg.ReplaceAllString(pattern, `[^/]`)
+
+	finishPattern := func(p string) error {
+		// Now replace back the escaped brackets.
+		p = strings.ReplaceAll(p, escapedMatchStart, `[`)
+		p = strings.ReplaceAll(p, escapedMatchEnd, `]`)
+		pattern = strings.ReplaceAll(pattern, negatedMatchStart, "[^")
+		pattern = strings.ReplaceAll(pattern, matchStart, "[")
+		pattern = strings.ReplaceAll(pattern, matchEnd, "]")
+
+		reg, err := regexp.Compile("^" + regexp.QuoteMeta(prefix) + strings.TrimPrefix(p, "/") + "$")
+		if err != nil {
+			return err
+		}
+
+		rule.Regexp = append(rule.Regexp, reg)
+		return nil
+	}
+
+	// Skip that additional pattern if nothing was replaced.
+	if additionalPattern != pattern {
+		err := finishPattern(additionalPattern)
+		if err != nil {
+			return false, Rule{}, err
+		}
+	}
+
+	err = finishPattern(pattern)
 	if err != nil {
 		return false, Rule{}, err
 	}

@@ -18,20 +18,20 @@ var (
 			prefix: "",
 			rules: []Rule{
 				{
-					Regexp:  regexp.MustCompile("^(.*/)?globallyIgnored$"),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile("^(.*/)?globallyIgnored$")},
 					Pattern: "globallyIgnored",
 				},
 				{
-					Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder/.*$"),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile("^aPartiallyIgnoredFolder/.*$")},
 					Pattern: "aPartiallyIgnoredFolder/**",
 				},
 				{
-					Regexp:  regexp.MustCompile(`^aPartiallyIgnoredFolder/\.gitignore$`),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile(`^aPartiallyIgnoredFolder/\.gitignore$`)},
 					Pattern: "!aPartiallyIgnoredFolder/.gitignore",
 					Negate:  true,
 				},
 				{
-					Regexp:  regexp.MustCompile(`^aFolder/ignoredFile$`),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile(`^aFolder/ignoredFile$`)},
 					Pattern: "aFolder/ignoredFile",
 				},
 			},
@@ -40,12 +40,12 @@ var (
 			prefix: "aFolder",
 			rules: []Rule{
 				{
-					Regexp:  regexp.MustCompile("^aFolder/locallyIgnoredFile$"),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile("^aFolder/locallyIgnoredFile$")},
 					Prefix:  "aFolder",
 					Pattern: "/locallyIgnoredFile",
 				},
 				{
-					Regexp:  regexp.MustCompile("^aFolder/ignoredSubFolder$"),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile("^aFolder/ignoredSubFolder$")},
 					Prefix:  "aFolder",
 					Pattern: "/ignoredSubFolder",
 				},
@@ -55,7 +55,7 @@ var (
 			prefix: "aPartiallyIgnoredFolder",
 			rules: []Rule{
 				{
-					Regexp:  regexp.MustCompile("^aPartiallyIgnoredFolder(/.*)?/unignoredFile$"),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile("^aPartiallyIgnoredFolder(/.*)?/unignoredFile$")},
 					Prefix:  "aPartiallyIgnoredFolder",
 					Pattern: "!unignoredFile",
 					Negate:  true,
@@ -66,37 +66,40 @@ var (
 			prefix: "glob-tests",
 			rules: []Rule{
 				{
-					Regexp:  regexp.MustCompile("^glob-tests/file[^/]*withStar$"),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile("^glob-tests/file[^/]*withStar$")},
 					Prefix:  "glob-tests",
 					Pattern: "/file*withStar",
 				},
 				{
-					Regexp:  regexp.MustCompile("^glob-tests/question[^/]?mark[^/]?[^/]?file[^/]?[^/]?[^/]?$"),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile("^glob-tests/question[^/]?mark[^/]?[^/]?file[^/]?[^/]?[^/]?$")},
 					Prefix:  "glob-tests",
 					Pattern: "/question?mark??file???",
 				},
 				{
-					Regexp:  regexp.MustCompile("^glob-tests/file[a-z]with[^0-9]ranges$"),
+					Regexp:  []*regexp.Regexp{
+						regexp.MustCompile("^glob-tests/file[^/]with[^/]ranges$"),
+						regexp.MustCompile("^glob-tests/file[a-z]with[^0-9]ranges$"),
+					},
 					Prefix:  "glob-tests",
 					Pattern: "/file[a-z]with[!0-9]ranges",
 				},
 				{
-					Regexp:  regexp.MustCompile("^glob-tests/file[^/]*withDoubleStar$"),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile("^glob-tests/file[^/]*withDoubleStar$")},
 					Prefix:  "glob-tests",
 					Pattern: "/file**withDoubleStar", // Actually this resolves to a single star as the double star only has special meaning at the beginning or end of a filename.
 				},
 				{
-					Regexp:  regexp.MustCompile("^glob-tests(/.*)?/foo$"),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile("^glob-tests(/.*)?/foo$")},
 					Prefix:  "glob-tests",
 					Pattern: "**/foo",
 				},
 				{
-					Regexp:  regexp.MustCompile("^glob-tests/any/.*$"),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile("^glob-tests/any/.*$")},
 					Prefix:  "glob-tests",
 					Pattern: "any/**",
 				},
 				{
-					Regexp:  regexp.MustCompile("^glob-tests/something.*/more$"),
+					Regexp:  []*regexp.Regexp{regexp.MustCompile("^glob-tests/something.*/more$")},
 					Prefix:  "glob-tests",
 					Pattern: "something/**/more",
 				},
@@ -137,14 +140,12 @@ var testFS = map[string]struct {
 	"glob-tests/questionämarköfileü":    {"", &Result{Rule: TestFSGroups[3].rules[1], Found: true, ParentMatch: false}},
 	"glob-tests/question/markfile":      {"", nil},
 
-	// question mark
+	// ranges
 	"glob-tests/filefwith-ranges": {"", &Result{Rule: TestFSGroups[3].rules[2], Found: true, ParentMatch: false}},
-	// TODO: Actually I am not sure if a not-existing char still should match...
 	"glob-tests/filewithranges":   {"", nil},
 	"glob-tests/fileAwithAranges": {"", nil},
 	"glob-tests/fileawith5ranges": {"", nil},
-	// TODO: Actually I am not sure if slashes are allowed in this case...
-	"glob-tests/filegwith/ranges": {"", &Result{Rule: TestFSGroups[3].rules[2], Found: true, ParentMatch: false}},
+	"glob-tests/filefwith/ranges": {"", nil},
 
 	// double star  // Actually this resolves to a single star as the double star only has special meaning at the beginning or end of a filename.
 	"glob-tests/file42withDoubleStar":  {"", &Result{Rule: TestFSGroups[3].rules[3], Found: true, ParentMatch: false}},
@@ -201,7 +202,7 @@ func TestCompile(t *testing.T) {
 		name           string
 		args           args
 		wantSkip       bool
-		wantRegexp     string
+		wantRegexp     []string
 		wantNegate     bool
 		wantOnlyFolder bool
 		wantErr        bool
@@ -213,7 +214,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFile",
 			},
-			wantRegexp: "^a/folder/aFile$",
+			wantRegexp: []string{"^a/folder/aFile$"},
 			wantMatches: []matches{
 				{
 					name:    "the file itself",
@@ -243,7 +244,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "sub/aFile",
 			},
-			wantRegexp: "^a/folder/sub/aFile$",
+			wantRegexp: []string{"^a/folder/sub/aFile$"},
 			wantMatches: []matches{
 				{
 					name:    "the file in the root",
@@ -274,7 +275,7 @@ func TestCompile(t *testing.T) {
 				pattern: "sub/aFolder/",
 			},
 			wantOnlyFolder: true,
-			wantRegexp:     "^a/folder/sub/aFolder$",
+			wantRegexp:     []string{"^a/folder/sub/aFolder$"},
 			wantMatches: []matches{
 				{
 					name:    "the specific folder",
@@ -294,7 +295,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "aFile",
 			},
-			wantRegexp: "^a/folder(/.*)?/aFile$",
+			wantRegexp: []string{"^a/folder(/.*)?/aFile$"},
 			wantMatches: []matches{
 				{
 					name:    "the file in the root",
@@ -319,7 +320,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "",
 				pattern: "aFile",
 			},
-			wantRegexp: "^(.*/)?aFile$",
+			wantRegexp: []string{"^(.*/)?aFile$"},
 			wantMatches: []matches{
 				{
 					name:    "the file in the root with slash",
@@ -349,7 +350,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFile.*",
 			},
-			wantRegexp: "^a/folder/aFile\\.[^/]*$",
+			wantRegexp: []string{"^a/folder/aFile\\.[^/]*$"},
 			wantMatches: []matches{
 				{
 					name:    "a matching suffix",
@@ -374,7 +375,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder*IsHere/nogo.go",
 			},
-			wantRegexp: "^a/folder/aFolder[^/]*IsHere/nogo\\.go$",
+			wantRegexp: []string{"^a/folder/aFolder[^/]*IsHere/nogo\\.go$"},
 			wantMatches: []matches{
 				{
 					name:    "with something in the middle",
@@ -394,7 +395,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder/nogo.js?",
 			},
-			wantRegexp: "^a/folder/aFolder/nogo\\.js[^/]?$",
+			wantRegexp: []string{"^a/folder/aFolder/nogo\\.js[^/]?$"},
 			wantMatches: []matches{
 				{
 					name:    "with one char at the end",
@@ -419,7 +420,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder?yay/nogo.go",
 			},
-			wantRegexp: "^a/folder/aFolder[^/]?yay/nogo\\.go$",
+			wantRegexp: []string{"^a/folder/aFolder[^/]?yay/nogo\\.go$"},
 			wantMatches: []matches{
 				{
 					name:    "with one char",
@@ -449,7 +450,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder???yay/nogo.go",
 			},
-			wantRegexp: "^a/folder/aFolder[^/]?[^/]?[^/]?yay/nogo\\.go$",
+			wantRegexp: []string{"^a/folder/aFolder[^/]?[^/]?[^/]?yay/nogo\\.go$"},
 			wantMatches: []matches{
 				{
 					name:    "with one char",
@@ -484,7 +485,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFol^der/n{o}go.go",
 			},
-			wantRegexp: "^a/folder/aFol\\^der/n\\{o\\}go\\.go$",
+			wantRegexp: []string{"^a/folder/aFol\\^der/n\\{o\\}go\\.go$"},
 			wantMatches: []matches{
 				{
 					name:    "with these characters in the input",
@@ -499,7 +500,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aF\\?\\?older/no\\*go.go",
 			},
-			wantRegexp: "^a/folder/aF\\?\\?older/no\\*go\\.go$",
+			wantRegexp: []string{"^a/folder/aF\\?\\?older/no\\*go\\.go$"},
 			wantMatches: []matches{
 				{
 					name:    "with these characters in the input",
@@ -514,7 +515,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder/nogo.[jt]s",
 			},
-			wantRegexp: "^a/folder/aFolder/nogo\\.[jt]s$",
+			wantRegexp: []string{"^a/folder/aFolder/nogo\\.[^/]s$", "^a/folder/aFolder/nogo\\.[jt]s$"},
 			wantMatches: []matches{
 				{
 					name:    "with one of these characters",
@@ -544,7 +545,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder/nogo.[a-z]s",
 			},
-			wantRegexp: "^a/folder/aFolder/nogo\\.[a-z]s$",
+			wantRegexp: []string{"^a/folder/aFolder/nogo\\.[^/]s$", "^a/folder/aFolder/nogo\\.[a-z]s$"},
 			wantMatches: []matches{
 				{
 					name:    "with one of these characters",
@@ -574,7 +575,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "/aFolder/nogo.[!a-z]s",
 			},
-			wantRegexp: "^a/folder/aFolder/nogo\\.[^a-z]s$",
+			wantRegexp: []string{"^a/folder/aFolder/nogo\\.[^/]s$", "^a/folder/aFolder/nogo\\.[^a-z]s$"},
 			wantMatches: []matches{
 				{
 					name:    "with one of these characters",
@@ -602,9 +603,9 @@ func TestCompile(t *testing.T) {
 			name: "fnmatch matching escaped [ and ]",
 			args: args{
 				prefix:  "a/folder",
-				pattern: "/aFolder/nogo.\\[!a-z\\]s",
+				pattern: `/aFolder/nogo.\[!a-z\]s`,
 			},
-			wantRegexp: "^a/folder/aFolder/nogo\\.\\[!a-z\\]s$",
+			wantRegexp: []string{`^a/folder/aFolder/nogo\.\[!a-z\]s$`},
 			wantMatches: []matches{
 				{
 					name:    "with these characters in the input",
@@ -619,7 +620,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "",
 			},
-			wantRegexp: "",
+			wantRegexp: nil,
 			wantSkip:   true,
 		},
 		{
@@ -636,7 +637,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "\\#aFile",
 			},
-			wantRegexp: "^a/folder(/.*)?/#aFile$",
+			wantRegexp: []string{"^a/folder(/.*)?/#aFile$"},
 			wantMatches: []matches{
 				{
 					name:    "exact file",
@@ -651,7 +652,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "aFile/isHere   ",
 			},
-			wantRegexp: "^a/folder/aFile/isHere$",
+			wantRegexp: []string{"^a/folder/aFile/isHere$"},
 			wantMatches: []matches{
 				{
 					name:    "exact file",
@@ -671,7 +672,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "aFile/isHere  \\ ",
 			},
-			wantRegexp: "^a/folder/aFile/isHere   $",
+			wantRegexp: []string{"^a/folder/aFile/isHere   $"},
 			wantMatches: []matches{
 				{
 					name:    "exact file",
@@ -691,7 +692,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "a/folder",
 				pattern: "!/aFile",
 			},
-			wantRegexp: "^a/folder/aFile$",
+			wantRegexp: []string{"^a/folder/aFile$"},
 			wantNegate: true,
 			wantMatches: []matches{
 				{
@@ -722,7 +723,7 @@ func TestCompile(t *testing.T) {
 				prefix:  ".idea",
 				pattern: "/workspace.xml",
 			},
-			wantRegexp: "^\\.idea/workspace\\.xml$",
+			wantRegexp: []string{"^\\.idea/workspace\\.xml$"},
 			wantMatches: []matches{
 				{
 					name:    "the file itself",
@@ -737,7 +738,7 @@ func TestCompile(t *testing.T) {
 				prefix:  "",
 				pattern: "/.git",
 			},
-			wantRegexp: "^\\.git$",
+			wantRegexp: []string{"^\\.git$"},
 			wantMatches: []matches{
 				{
 					name:    "the file itself",
@@ -757,7 +758,12 @@ func TestCompile(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			assert.Equal(t, tt.wantRegexp, gotRule.Regexp.String())
+			require.Equal(t, len(tt.wantRegexp), len(gotRule.Regexp))
+
+			for i := range tt.wantRegexp {
+				assert.EqualValues(t, tt.wantRegexp[i], gotRule.Regexp[i].String())
+			}
+			
 			assert.Equal(t, tt.wantNegate, gotRule.Negate)
 			assert.Equal(t, tt.wantOnlyFolder, gotRule.OnlyFolder)
 			assert.Equal(t, tt.wantSkip, gotSkip)
@@ -767,7 +773,13 @@ func TestCompile(t *testing.T) {
 
 			for _, match := range tt.wantMatches {
 				t.Run(match.input+"|"+match.name, func(t *testing.T) {
-					gotMatches := gotRule.Regexp.MatchString(match.input)
+					var gotMatches bool
+					for _, reg := range gotRule.Regexp {
+						gotMatches = reg.MatchString(match.input)
+						if !gotMatches {
+							break
+						}
+					}					
 					assert.Equal(t, match.matches, gotMatches)
 				})
 			}
