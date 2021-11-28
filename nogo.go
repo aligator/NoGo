@@ -128,7 +128,7 @@ func NewGitignore(options ...Option) *NoGo {
 		if err != nil {
 			panic(err)
 		}
-		WithFS(os.DirFS(wd))
+		WithFS(os.DirFS(wd))(no)
 	}
 
 	return no
@@ -148,7 +148,7 @@ func New(ignoreFileNames []string, options ...Option) *NoGo {
 		if err != nil {
 			panic(err)
 		}
-		WithFS(os.DirFS(wd))
+		WithFS(os.DirFS(wd))(no)
 	}
 
 	return no
