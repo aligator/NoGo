@@ -3,10 +3,9 @@ package main
 import (
 	"fmt"
 	"github.com/aligator/nogo"
+	"github.com/spf13/afero"
 	"io/fs"
 	"os"
-
-	"github.com/spf13/afero"
 )
 
 func main() {
@@ -16,13 +15,16 @@ func main() {
 	}
 
 	baseFS := afero.NewBasePathFs(afero.NewOsFs(), wd)
-	err = nogo.AferoWalk([]string{".gitignore"}, baseFS, func(path string, info fs.FileInfo, err error) error {
+
+	n := nogo.New(nogo.DotGitRule)
+
+	err = fs.WalkDir(n.ForWalkDir(afero.NewIOFS(baseFS), ".", []string{".gitignore"}, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(path, info.Name())
+		fmt.Println(path, d.Name())
 		return nil
-	}, nogo.WithRules(nogo.GitIgnoreRule...))
+	}))
 
 	if err != nil {
 		panic(err)

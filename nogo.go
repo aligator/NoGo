@@ -34,9 +34,7 @@ package nogo
 import (
 	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -45,124 +43,27 @@ type group struct {
 	rules  []Rule
 }
 
-type Option func(noGo *NoGo)
-
 type NoGo struct {
-	fs              fs.FS
-	groups          []group
-	ignoreFileNames []string
-	matchNoParents  bool
-}
-
-// Apply options to NoGo.
-// This is also possible when instantiating with New.
-func (n *NoGo) Apply(options ...Option) {
-	for _, o := range options {
-		o(n)
-	}
-}
-
-// WithFS is an option which injects a filesystem.
-// If this is not passed, the current working directory is used.
-func WithFS(f fs.FS) Option {
-	return func(noGo *NoGo) {
-		noGo.fs = f
-	}
-}
-
-// WithRules can be used to add rules without an extra call to an Add method.
-// This can be used to add predefined rules like the GitIgnoreRule.
-// For example:
-//  n := nogo.New(nogo.WithRules(nogo.GitIgnoreRule...))
-func WithRules(rules ...Rule) Option {
-	return func(noGo *NoGo) {
-		noGo.AddRules(rules...)
-	}
-}
-
-// WithoutMatchParents disables the time-consuming check for all parents.
-// You can use this if you know that no file gets checked without also all parents being checked before.
-//
-// As the parent-check is time-consuming it is for example better to disable that check when using Walk function.
-// (nogo.WalkDir and nogo.WalkAfero do this automatically).
-//
-// Example:
-//  Folder1
-//   - File1
-//  .gitignore -> Rule: "/Folder1"
-//
-// If the gitignore contains the rule "/Folder1" and you check the file
-// `/Folder1/File1`, you will get a correct match.
-//
-// But if you check the file WITH "WithoutMatchParents", the file will not match
-// as it itself is not in any ignore-list and the parent folder does not get checked.
-//
-// When doing file traversal with a Walk method, this doesn't matter
-// as the Folder1 won't be read and therefore /Folder1/File1 won't be read either.
-//
-// But when checking only the file /Folder1/File1 directly, you will NOT want "WithoutMatchParents".
-func WithoutMatchParents() Option {
-	return func(noGo *NoGo) {
-		noGo.matchNoParents = true
-	}
-}
-
-// NewGitignore creates a new NoGo which is already preset for the use
-// with .gitignore files, as this is very common.
-//
-// It not only sets the ignoreFileName to ".gitignore" but
-// also adds the GitIgnoreRule to avoid .git folders.
-func NewGitignore(options ...Option) *NoGo {
-	no := &NoGo{
-		ignoreFileNames: []string{".gitignore"},
-	}
-
-	no.AddRules(GitIgnoreRule...)
-
-	for _, o := range options {
-		o(no)
-	}
-
-	if no.fs == nil {
-		wd, err := os.Getwd()
-		if err != nil {
-			panic(err)
-		}
-		WithFS(os.DirFS(wd))(no)
-	}
-
-	return no
+	groups []group
 }
 
 // New creates a NoGo instance which works for the given ignoreFileNames.
 // You can pass additional options if needed.
-func New(ignoreFileNames []string, options ...Option) *NoGo {
-	no := &NoGo{
-		ignoreFileNames: ignoreFileNames,
-	}
-
-	no.Apply(options...)
-
-	if no.fs == nil {
-		wd, err := os.Getwd()
-		if err != nil {
-			panic(err)
-		}
-		WithFS(os.DirFS(wd))(no)
-	}
-
-	return no
+func New(rules ...Rule) *NoGo {
+	n := &NoGo{}
+	n.AddRules(rules...)
+	return n
 }
 
-// AddAll ignore files which can be found.
+// AddFromFS ignore files which can be found in the given fsys.
 // It only loads ignore files which are not ignored itself by another file.
-func (n *NoGo) AddAll() error {
-	return fs.WalkDir(n.fs, ".", func(path string, d fs.DirEntry, err error) error {
+func (n *NoGo) AddFromFS(fsys fs.FS, ignoreFilenames []string) error {
+	return fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		_, err = n.walkFN(path, d.IsDir())
+		_, err = n.walkFN(fsys, ignoreFilenames, path, d.IsDir())
 		return err
 	})
 }
@@ -177,7 +78,7 @@ func (n *NoGo) AddRules(rules ...Rule) {
 	}
 }
 
-// AddFile reads the given file and tries to load the content as a ignore file.
+// AddFile reads the given file and tries to load the content as an ignore file.
 // It does not check the filename. So you can add any file, independently of
 // the configured ignoreFileNames.
 //
@@ -187,8 +88,8 @@ func (n *NoGo) AddRules(rules ...Rule) {
 // You should always first add the rules of parent folders and then of the
 // children folders.
 // TODO: in the future the rules could be re-sorted based on the prefix names.
-func (n *NoGo) AddFile(path string) error {
-	file, err := n.fs.Open(path)
+func (n *NoGo) AddFile(fsys fs.FS, path string) error {
+	file, err := fsys.Open(path)
 	if err != nil {
 		return err
 	}
@@ -216,77 +117,60 @@ func (n *NoGo) AddFile(path string) error {
 	return nil
 }
 
-// MatchPath calculates if the path matches any rule.
-//
-// It does the same as MatchPathBecauseNoStat, but it itself determines if path is a
-// directory.
-// If you already have that information, use MatchPathBecauseNoStat.
-//
-// As it has to query the filesystem, it may return an error
-// due to possible filesystem errors.
-func (n *NoGo) MatchPath(path string) (bool, error) {
-	match, _, err := n.MatchPathBecause(path)
-	return match, err
-}
-
-// MatchPathBecause calculates if the path matches any rule.
-// It returns the match but also a result, where the match was calculated from.
-// Use MatchPath or MatchPathNoStat if you do not need the cause.
-//
-// It does the same as MatchPathBecauseNoStat, but it itself determines if path is a
-// directory.
-// If you already have that information, use MatchPathBecauseNoStat.
-//
-// As it has to query the filesystem, it may return an error
-// due to possible filesystem errors.
-func (n *NoGo) MatchPathBecause(path string) (match bool, because Result, err error) {
-	statFS, ok := n.fs.(fs.StatFS)
-	var isDir bool
-	if ok {
-		stat, err := statFS.Stat(path)
-		if err != nil {
-			return false, Result{}, err
-		}
-		isDir = stat.IsDir()
-	} else {
-		f, err := n.fs.Open(path)
-		if err != nil {
-			return false, Result{}, err
-		}
-
-		stat, err := f.Stat()
-		if err != nil {
-			return false, Result{}, err
-		}
-		isDir = stat.IsDir()
-	}
-
-	match, because = n.MatchPathBecauseNoStat(path, isDir)
-	return match, because, nil
-}
-
-// MatchPathNoStat calculates if the path matches any rule.
-//
-// It does the same as MatchPath, but you have to pass yourself if the
-// path is a directory.
-// This can be useful to avoid unneeded Stat-calls.
-// (e.g. in a Walk function where you already have that information)
-func (n *NoGo) MatchPathNoStat(path string, isDir bool) bool {
-	match, _ := n.MatchPathBecauseNoStat(path, isDir)
+// Match calculates if the path matches any rule.
+// It does the same as MatchBecause but only returns the boolean
+// for more easy in-if usage.
+func (n *NoGo) Match(path string, isDir bool) bool {
+	match, _ := n.MatchBecause(path, isDir)
 	return match
 }
 
-// MatchPathBecauseNoStat calculates if the path matches any rule.
+// MatchBecause calculates if the path matches any rule.
 // It returns the match but also a result, where the match was calculated from.
-// Use MatchPath or MatchPathNoStat if you do not need the cause.
+// Use Match if you do not need the cause.
 //
-// It does the same as MatchPathBecause, but you have to pass yourself if the
-// path is a directory.
-// This can be useful to avoid unneeded Stat-calls.
-// (e.g. in a Walk function where you already have that information)
-func (n *NoGo) MatchPathBecauseNoStat(path string, isDir bool) (match bool, because Result) {
+// You have to pass if the path is a directory or not using isDir.
+func (n *NoGo) MatchBecause(path string, isDir bool) (match bool, because Result) {
+	return n.match(path, isDir, false)
+}
+
+// MatchWithoutParents does the same as MatchBecause and Match but it
+// disables a time-consuming check of all parent folder rules.
+// This is faster, but it results in wrong results if the check of the parents
+// is not done in another way.
+//
+// DO NOT USE THIS IF YOU DON'T UNDERSTAND HOW IT WORKS.
+// Use MatchBecause or Match instead.
+//
+// You can use this if you know that no file gets checked without also
+// all parents being checked before.
+//
+// As the parent-check is time-consuming it is for example better to disable
+// that check when using Walk function.
+// (NoGo.WalkDirFunc and NoGo.WalkAferoFunc use it for example).
+//
+// Example:
+//  Folder1
+//   - File1
+//  .gitignore -> Rule: "/Folder1"
+//
+// If the gitignore contains the rule "/Folder1" and you check the file
+// `/Folder1/File1`, you will get a correct match.
+//
+// But if you check the file WITH "WithoutMatchParents", the file will not match
+// as it itself is not in any ignore-list and the parent folder does not get checked.
+//
+// When doing file traversal with a Walk method, this doesn't matter
+// as the Folder1 won't be read and therefore /Folder1/File1 won't be read either.
+//
+// But when checking only the file /Folder1/File1 directly, you will NOT want "WithoutMatchParents".
+func (n *NoGo) MatchWithoutParents(path string, isDir bool) (match bool, because Result) {
+	return n.match(path, isDir, true)
+}
+
+func (n *NoGo) match(path string, isDir bool, noParents bool) (match bool, because Result) {
 	pathToCheck := []string{path}
-	if !n.matchNoParents {
+	if !noParents {
 		// Convert to slash for windows compatibility before splitting.
 		pathToCheck = strings.Split(filepath.ToSlash(path), "/")
 	}
@@ -321,210 +205,4 @@ func (n *NoGo) MatchPathBecauseNoStat(path string, isDir bool) (match bool, beca
 	}
 
 	return because.Found, because
-}
-	
-// These bytes won't be in any valid file, so they should be perfectly valid as temporary replacement.
-const (
-	doubleStar        = "\000"
-	singleStar        = "\001"
-	questionMark      = "\002"
-	negatedMatchStart = "\003"
-	matchStart        = "\004"
-	matchEnd          = "\005"
-	escapedMatchStart = "\006"
-	escapedMatchEnd   = "\007"
-)
-
-var (
-	// findRangeReg matches the replacements of [, [! and ].
-	// The ? in the regexp enables ungreedy mode.
-	findRangeReg = regexp.MustCompile(`[` + matchStart + negatedMatchStart + `].*?` + matchEnd)
-)
-
-// Compile the pattern into a single regexp.
-// skip means that this pattern doesn't contain any rule (e.g. just a comment or empty line).
-func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
-	rule = Rule{
-		Prefix: prefix,
-
-		// The original pattern of the source file.
-		Pattern: pattern,
-	}
-
-	// ignoreFs empty lines.
-	if len(pattern) == 0 {
-		return true, Rule{}, nil
-	}
-
-	// ignoreFs lines starting with # as these are comments.
-	if pattern[0] == '#' {
-		return true, Rule{}, nil
-	}
-
-	// Unescape \# to #.
-	if strings.HasPrefix(pattern, "\\#") {
-		pattern = pattern[1:]
-	}
-
-	// ignoreFs spaces except when the last one is escaped: 'something   \ '.
-	// TODO: actually I am not sure if this is correct but that's what I understand by
-	//  "* Trailing spaces are ignored unless they are quoted with backslash ("\")."
-	//  However I don't think that this is very often used.
-	if strings.HasSuffix(pattern, "\\ ") {
-		pattern = strings.TrimSuffix(pattern, "\\ ") + " "
-	} else {
-		pattern = strings.TrimRight(pattern, " ")
-	}
-
-	// '!' negates the pattern.
-	if pattern[0] == '!' {
-		rule.Negate = true
-		pattern = pattern[1:]
-	}
-
-	// If any '/' is at the beginning or middle, it is relative to the prefix.
-	// Else it may be anywhere bellow it and we have to apply a wildcard
-	if strings.Count(strings.TrimSuffix(pattern, "/"), "/") == 0 {
-		pattern = "**/" + strings.TrimPrefix(pattern, "/")
-	} else if prefix != "" {
-		// In most other cases we have to make sure the prefix ends with a '/'
-		prefix = strings.TrimSuffix(prefix, "/") + "/"
-	}
-
-	// Replace all special chars with placeholders, then quote the rest.
-	// After that the special regexp for that special cases can be replaced.
-
-	pattern = strings.ReplaceAll(pattern, "**", doubleStar)
-	pattern = strings.ReplaceAll(pattern, "*", singleStar)
-	pattern = strings.ReplaceAll(pattern, "?", questionMark)
-
-	// Re-Replace escaped replacements.
-	pattern = strings.ReplaceAll(pattern, `\`+doubleStar, "**")
-	pattern = strings.ReplaceAll(pattern, `\`+singleStar, "*")
-	pattern = strings.ReplaceAll(pattern, `\`+questionMark, "?")
-
-	pattern = regexp.QuoteMeta(pattern)
-
-	// Unescape and transform character matches.
-	// First replace all by the input escaped brackets to ignore them in the next replaces)
-	pattern = strings.ReplaceAll(pattern, `\\[`, escapedMatchStart)
-	pattern = strings.ReplaceAll(pattern, `\\]`, escapedMatchEnd)
-
-	// Then do the same with the negated one to ignore its bracket in the next replace.
-	pattern = strings.ReplaceAll(pattern, `\[!`, negatedMatchStart)
-	pattern = strings.ReplaceAll(pattern, `\[`, matchStart)
-	pattern = strings.ReplaceAll(pattern, `\]`, matchEnd)
-	// Now we can add any new regexp using [ and ] and still 
-	// Do something with the placeholders later.
-
-
-	// If any '/' is at the end, it matches only folders.
-	// Note, as the input does not show us if it is a folder, the bool
-	// is set and it has to be checked separately.
-	if strings.HasSuffix(pattern, "/") {
-		pattern = strings.TrimSuffix(pattern, "/")
-		rule.OnlyFolder = true
-	}
-
-	// Check the placeholders:
-
-	// '?' matches any char but '/'.
-	pattern = strings.ReplaceAll(pattern, questionMark, "[^/]?")
-
-	// Replace the placeholders:
-	// A leading "**" followed by a slash means matches in all directories.
-	if strings.HasPrefix(pattern, doubleStar+"/") {
-		if prefix == "" {
-			pattern = "(.*/)?" + strings.TrimPrefix(pattern, doubleStar+"/")
-		} else {
-			pattern = "(/.*)?" + strings.TrimPrefix(pattern, doubleStar)
-
-			// Also remove a possible '/' from the prefix so that it concatenates correctly with the wildcard
-			prefix = strings.TrimSuffix(prefix, "/")
-
-		}
-	}
-
-	// A trailing "/**" matches everything inside.
-	if strings.HasSuffix(pattern, "/"+doubleStar) {
-		pattern = strings.TrimSuffix(pattern, doubleStar) + ".*"
-	}
-
-	// A slash followed by two consecutive asterisks then a slash matches zero or more directories.
-	pattern = strings.ReplaceAll(pattern, "/"+doubleStar+"/", ".*/")
-
-	// '*' matches anything but '/'.
-	pattern = strings.ReplaceAll(pattern, singleStar, "[^/]*")
-
-	// Now replace all still existing doubleStars and all stars by the single star rule.
-	// TODO: Not sure if that is the correct behavior.
-	pattern = strings.ReplaceAll(pattern, doubleStar, "[^/]*")
-
-	// Add an additional regexp which checks for non-slash on all range patterns.
-	// As the range should not match slashes, but as Go doesn't support look-ahead,
-	// I just add a new rule for this.
-	additionalPattern := findRangeReg.ReplaceAllString(pattern, `[^/]`)
-
-	finishPattern := func(p string) error {
-		// Now replace back the escaped brackets.
-		p = strings.ReplaceAll(p, escapedMatchStart, `[`)
-		p = strings.ReplaceAll(p, escapedMatchEnd, `]`)
-		pattern = strings.ReplaceAll(pattern, negatedMatchStart, "[^")
-		pattern = strings.ReplaceAll(pattern, matchStart, "[")
-		pattern = strings.ReplaceAll(pattern, matchEnd, "]")
-
-		reg, err := regexp.Compile("^" + regexp.QuoteMeta(prefix) + strings.TrimPrefix(p, "/") + "$")
-		if err != nil {
-			return err
-		}
-
-		rule.Regexp = append(rule.Regexp, reg)
-		return nil
-	}
-
-	// Skip that additional pattern if nothing was replaced.
-	if additionalPattern != pattern {
-		err := finishPattern(additionalPattern)
-		if err != nil {
-			return false, Rule{}, err
-		}
-	}
-
-	err = finishPattern(pattern)
-	if err != nil {
-		return false, Rule{}, err
-	}
-
-	return false, rule, nil
-}
-
-// CompileAll rules in the given data line by line.
-// The prefix is added to all rules.
-func CompileAll(prefix string, data []byte) ([]Rule, error) {
-	rules := make([]Rule, 0)
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		// Remove \r on windows.
-		line = strings.TrimSuffix(line, "\r")
-
-		skip, rule, err := Compile(prefix, line)
-		if err != nil {
-			return nil, err
-		}
-
-		if !skip {
-			rules = append(rules, rule)
-		}
-	}
-	return rules, nil
-}
-
-// MustCompileAll does the same as CompileAll but panics on error.
-func MustCompileAll(prefix string, data []byte) []Rule {
-	rule, err := CompileAll(prefix, data)
-	if err != nil {
-		panic(err)
-	}
-
-	return rule
 }
