@@ -64,7 +64,7 @@ func main() {
 	n := nogo.New(nogo.DotGitRule)
 
 	err = afero.Walk(baseFS, ".", func(path string, info fs.FileInfo, err error) error {
-		if ok, err := n.WalkFN(afero.NewIOFS(baseFS), ".gitignore", path, info.IsDir(), err); !ok {
+		if ok, err := n.WalkFunc(afero.NewIOFS(baseFS), ".gitignore", path, info.IsDir(), err); !ok {
 			return err
 		}
 

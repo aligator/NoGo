@@ -59,7 +59,7 @@ func New(rules ...Rule) *NoGo {
 // It only loads ignore files which are not ignored itself by another file.
 func (n *NoGo) AddFromFS(fsys fs.FS, ignoreFilename string) error {
 	return fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
-		_, err = n.WalkFN(fsys, ignoreFilename, path, d.IsDir(), err)
+		_, err = n.WalkFunc(fsys, ignoreFilename, path, d.IsDir(), err)
 		return err
 	})
 }
