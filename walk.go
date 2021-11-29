@@ -43,6 +43,22 @@ func (n *NoGo) WalkFN(fsys fs.FS, ignoreFileName string, path string, isDir bool
 	return true, nil
 }
 
+// ForWalkDir can be used to set all parameters of fs.WalkDir.
+// It only calls the passed WalkDirFunc for files and directories
+// which are not ignored.
+//
+// If you need something similar for any other Walk function (e.g. afero.Walk)
+// You can use WalkFN for that.
+//
+// Example:
+//  n := nogo.New(nogo.DotGitRule)
+//  err = fs.WalkDir(n.ForWalkDir(walkFS, ".", ".gitignore", func(path string, d fs.DirEntry, err error) error {
+//		if err != nil {
+//			return err
+//		}
+//		fmt.Println(path, d.Name())
+//		return nil
+//	}))
 func (n *NoGo) ForWalkDir(fsys fs.FS, root string, ignoreFilename string, fn fs.WalkDirFunc) (fs.FS, string, fs.WalkDirFunc) {
 	return fsys, root, func(path string, d fs.DirEntry, err error) error {
 		ok, err := n.WalkFN(fsys, ignoreFilename, path, d.IsDir(), err)
