@@ -184,7 +184,7 @@ func (n *NoGo) match(path string, isDir bool, noParents bool) (match bool, becau
 			for _, rule := range g.rules {
 				newRes := rule.MatchPath(path)
 
-				if newRes.Found {
+				if newRes.Found && ((newRes.OnlyFolder && isDir) || !newRes.OnlyFolder) {
 					because = newRes
 					because.ParentMatch = i < len(pathToCheck)-1
 				}
