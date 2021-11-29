@@ -4,59 +4,76 @@ A .gitignore parser for Go.
 ## Features
 * parsing .gitignore files
 * loading file trees with several .gitignore files
-* fs.WalkDir and afero.Walk wrappers which ignore all ignored files
-* full compatibility with git
+* fs.WalkDir WalkDirFunc implementation (and afero.Walk (see below))
 * customizable ignore filename (instead of .gitignore)
-
+* full compatibility with git  
 As far as I could test it, it handles .gitignore files the same way as git.  
-If you find an inconsistency with git, create a new Issue.  
+If you find an inconsistency with git, please create a new Issue.  
 The goal is to provide the exact same .gitignore handling.
 
 ## Usage
-By default, the working directory is used as root. You can modify that by adding `nogo.WithFS(anyFSImplementation)`
-
-Preconfigured for standard '.gitignore' files:
 ```go
-n := nogo.NewGitignore()
-match, err := n.MatchPath(toSearch)
-if err != nil {
+n := nogo.New(nogo.DotGitRule)
+if err := n.AddFromFS(wdfs, ".gitignore"); err != nil {
     panic(err)
 }
+
+match := n.Match(toSearch, isDir)
 fmt.Println(match)
 ```
 
-Plain:
+There is also an alternative MatchBecause method which returns also
+the causing rule if you need some context.
+
+There exists a predefined rule to ignore any `.git` folder automatically.
 ```go
-n := nogo.New([]string{".nogoignore"})
-match, err := n.MatchPath(toSearch)
-if err != nil {
+n := nogo.New(nogo.DotGitRule)
+if err := n.AddFromFS(wdfs, ".gitignore"); err != nil {
     panic(err)
 }
-fmt.Println(match)
-```
-
-There are also some alternative Match* methods which return also the causing 
-rule and/or accept a `isDir` boolean and therefore skip an extra `Stat` call which may be more performant. 
-
-## Options
-All functions (`nogo.New`, `nogo.NewGitignore`, `nogo.WalkDir`, `nogo.WalkAfero`) accept options
-as the last parameters, which can further modify NoGo. Please read the GoDoc for more information.
-* `WithFS` (if not used, the working directory is used)
-* `WithRules` (you can also pass new rules after creation by using any of the `Add*` methods)
-* `WithoutMatchParents` (more performant, but may introduce false results if used in a wrong way)
-
-There exists a predefined rule to ignore the `.git` folder automatically: (`nogo.NewGitignore` uses it by default)
-```go
-n := nogo.New([]string{".nogoignore"}, WithRules(GitIgnoreRule...))
 ```
 
 ## Walk
-NoGo provides custom walk functions which ignore all files which are ignored by any ignore file.
-It exists in two flavours as I noticed that the fs.WalkDir function
-is not that easy to use with afero.NewIOFS especially on windows.  
-See [walk](example/walk/main.go) and [walkAfero](example/walk/main.go) for examples.
+NoGo can be used with fs.WalkDir. [Just see the example walk.](example/walk/main.go)
+If you need to use another Walk function, you can build your own wrapper using 
+the `NoGo.WalkFN` function. 
 
-## Dependencies
-NoGo is built in pure Go with the exception of
-* [afero](https://github.com/spf13/afero) which is only needed by the `AferoWalk` function and to run the tests.
-* [testify](https://github.com/stretchr/testify) which is only needed to run the tests.
+Example for afero:
+I intentionally did not include this to avoid a new dependency
+just because of afero-compatibility. However, as you can see, it is not that 
+hard to build your own:
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/aligator/nogo"
+	"github.com/spf13/afero"
+	"io/fs"
+	"os"
+)
+
+func main() {
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
+	baseFS := afero.NewBasePathFs(afero.NewOsFs(), wd)
+
+	n := nogo.New(nogo.DotGitRule)
+
+	err = afero.Walk(baseFS, ".", func(path string, info fs.FileInfo, err error) error {
+		if ok, err := n.WalkFunc(afero.NewIOFS(baseFS), ".gitignore", path, info.IsDir(), err); !ok {
+			return err
+		}
+
+		fmt.Println(path, info.Name())
+		return nil
+	})
+
+	if err != nil {
+		panic(err)
+	}
+}
+```

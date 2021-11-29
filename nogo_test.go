@@ -4,12 +4,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io/fs"
-	"os"
-	"path/filepath"
 	"regexp"
 	"testing"
-
-	"github.com/spf13/afero"
+	"testing/fstest"
 )
 
 var (
@@ -76,7 +73,7 @@ var (
 					Pattern: "/question?mark??file???",
 				},
 				{
-					Regexp:  []*regexp.Regexp{
+					Regexp: []*regexp.Regexp{
 						regexp.MustCompile("^glob-tests/file[^/]with[^/]ranges$"),
 						regexp.MustCompile("^glob-tests/file[a-z]with[^0-9]ranges$"),
 					},
@@ -111,81 +108,83 @@ var (
 var testFS = map[string]struct {
 	data      string
 	ignoredBy *Result
+	isDir     bool // TODO: currently there is no test for a dir...
 }{
-	".gitignore":                                                   {"globallyIgnored\naPartiallyIgnoredFolder/**\n!aPartiallyIgnoredFolder/.gitignore\naFolder/ignoredFile", nil},
-	"globallyIgnored":                                              {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: false}},
-	"aFile":                                                        {"", nil},
-	"aFolder/ignoredFile":                                          {"", &Result{Rule: TestFSGroups[0].rules[3], Found: true, ParentMatch: false}},
-	"aFolder/notIgnored":                                           {"", nil},
-	"aFolder/locallyIgnoredFile":                                   {"", &Result{Rule: TestFSGroups[1].rules[0], Found: true, ParentMatch: false}},
-	"aFolder/.gitignore":                                           {"/locallyIgnoredFile\n/ignoredSubFolder", nil},
-	"aFolder/ignoredSubFolder/aFile":                               {"", &Result{Rule: TestFSGroups[1].rules[1], Found: true, ParentMatch: true}},
-	"aFolder/ignoredSubFolder/anotherFile":                         {"", &Result{Rule: TestFSGroups[1].rules[1], Found: true, ParentMatch: true}},
-	"aPartiallyIgnoredFolder/.gitignore":                           {"!unignoredFile", &Result{Rule: TestFSGroups[0].rules[2], Found: true, ParentMatch: false}},
-	"aPartiallyIgnoredFolder/unignoredFile":                        {"", &Result{Rule: TestFSGroups[2].rules[0], Found: true, ParentMatch: false}},
-	"aPartiallyIgnoredFolder/ignoredFile":                          {"", &Result{Rule: TestFSGroups[0].rules[1], Found: true, ParentMatch: false}},
-	"aPartiallyIgnoredFolder/ignoredFolder/.gitignore":             {"notParsed as it is in an ignored folder", &Result{Rule: TestFSGroups[0].rules[1], Found: true, ParentMatch: false}},
-	"aFolder/anotherFolder/globallyIgnored":                        {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: false}},
-	"aFolder/anotherFolder/globallyIgnored/aFileInGloballyIgnored": {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: true}},
+	".gitignore":                                                   {"globallyIgnored\naPartiallyIgnoredFolder/**\n!aPartiallyIgnoredFolder/.gitignore\naFolder/ignoredFile", nil, false},
+	"globallyIgnored":                                              {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: false}, false},
+	"aFile":                                                        {"", nil, false},
+	"aFolder/ignoredFile":                                          {"", &Result{Rule: TestFSGroups[0].rules[3], Found: true, ParentMatch: false}, false},
+	"aFolder/notIgnored":                                           {"", nil, false},
+	"aFolder/locallyIgnoredFile":                                   {"", &Result{Rule: TestFSGroups[1].rules[0], Found: true, ParentMatch: false}, false},
+	"aFolder/.gitignore":                                           {"/locallyIgnoredFile\n/ignoredSubFolder", nil, false},
+	"aFolder/ignoredSubFolder/aFile":                               {"", &Result{Rule: TestFSGroups[1].rules[1], Found: true, ParentMatch: true}, false},
+	"aFolder/ignoredSubFolder/anotherFile":                         {"", &Result{Rule: TestFSGroups[1].rules[1], Found: true, ParentMatch: true}, false},
+	"aPartiallyIgnoredFolder/.gitignore":                           {"!unignoredFile", &Result{Rule: TestFSGroups[0].rules[2], Found: true, ParentMatch: false}, false},
+	"aPartiallyIgnoredFolder/unignoredFile":                        {"", &Result{Rule: TestFSGroups[2].rules[0], Found: true, ParentMatch: false}, false},
+	"aPartiallyIgnoredFolder/ignoredFile":                          {"", &Result{Rule: TestFSGroups[0].rules[1], Found: true, ParentMatch: false}, false},
+	"aPartiallyIgnoredFolder/ignoredFolder/.gitignore":             {"notParsed as it is in an ignored folder", &Result{Rule: TestFSGroups[0].rules[1], Found: true, ParentMatch: false}, false},
+	"aFolder/anotherFolder/globallyIgnored":                        {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: false}, false},
+	"aFolder/anotherFolder/globallyIgnored/aFileInGloballyIgnored": {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: true}, false},
 
-	"glob-tests/.gitignore": {"/file*withStar\n/question?mark??file???\n/file[a-z]with[!0-9]ranges\n/file**withDoubleStar\n**/foo\nany/**\nsomething/**/more", nil},
+	"glob-tests/.gitignore": {"/file*withStar\n/question?mark??file???\n/file[a-z]with[!0-9]ranges\n/file**withDoubleStar\n**/foo\nany/**\nsomething/**/more", nil, false},
 	// star
-	"glob-tests/file42withStar":  {"", &Result{Rule: TestFSGroups[3].rules[0], Found: true, ParentMatch: false}},
-	"glob-tests/filewithStar":    {"", &Result{Rule: TestFSGroups[3].rules[0], Found: true, ParentMatch: false}},
-	"glob-tests/file4/2withStar": {"", nil},
+	"glob-tests/file42withStar":  {"", &Result{Rule: TestFSGroups[3].rules[0], Found: true, ParentMatch: false}, false},
+	"glob-tests/filewithStar":    {"", &Result{Rule: TestFSGroups[3].rules[0], Found: true, ParentMatch: false}, false},
+	"glob-tests/file4/2withStar": {"", nil, false},
 
 	// question mark
-	"glob-tests/questionmarkfile":       {"", &Result{Rule: TestFSGroups[3].rules[1], Found: true, ParentMatch: false}},
-	"glob-tests/question0mark42file123": {"", &Result{Rule: TestFSGroups[3].rules[1], Found: true, ParentMatch: false}},
-	"glob-tests/questionämarköfileü":    {"", &Result{Rule: TestFSGroups[3].rules[1], Found: true, ParentMatch: false}},
-	"glob-tests/question/markfile":      {"", nil},
+	"glob-tests/questionmarkfile":       {"", &Result{Rule: TestFSGroups[3].rules[1], Found: true, ParentMatch: false}, false},
+	"glob-tests/question0mark42file123": {"", &Result{Rule: TestFSGroups[3].rules[1], Found: true, ParentMatch: false}, false},
+	"glob-tests/questionämarköfileü":    {"", &Result{Rule: TestFSGroups[3].rules[1], Found: true, ParentMatch: false}, false},
+	"glob-tests/question/markfile":      {"", nil, false},
 
 	// ranges
-	"glob-tests/filefwith-ranges": {"", &Result{Rule: TestFSGroups[3].rules[2], Found: true, ParentMatch: false}},
-	"glob-tests/filewithranges":   {"", nil},
-	"glob-tests/fileAwithAranges": {"", nil},
-	"glob-tests/fileawith5ranges": {"", nil},
-	"glob-tests/filefwith/ranges": {"", nil},
+	"glob-tests/filefwith-ranges": {"", &Result{Rule: TestFSGroups[3].rules[2], Found: true, ParentMatch: false}, false},
+	"glob-tests/filewithranges":   {"", nil, false},
+	"glob-tests/fileAwithAranges": {"", nil, false},
+	"glob-tests/fileawith5ranges": {"", nil, false},
+	"glob-tests/filefwith/ranges": {"", nil, false},
 
 	// double star  // Actually this resolves to a single star as the double star only has special meaning at the beginning or end of a filename.
-	"glob-tests/file42withDoubleStar":  {"", &Result{Rule: TestFSGroups[3].rules[3], Found: true, ParentMatch: false}},
-	"glob-tests/filewithDoubleStar":    {"", &Result{Rule: TestFSGroups[3].rules[3], Found: true, ParentMatch: false}},
-	"glob-tests/file4/2withDoubleStar": {"", nil},
+	"glob-tests/file42withDoubleStar":  {"", &Result{Rule: TestFSGroups[3].rules[3], Found: true, ParentMatch: false}, false},
+	"glob-tests/filewithDoubleStar":    {"", &Result{Rule: TestFSGroups[3].rules[3], Found: true, ParentMatch: false}, false},
+	"glob-tests/file4/2withDoubleStar": {"", nil, false},
 
 	// **/foo
-	"glob-tests/foo":      {"", &Result{Rule: TestFSGroups[3].rules[4], Found: true, ParentMatch: false}},
-	"glob-tests/bar/foo":  {"", &Result{Rule: TestFSGroups[3].rules[4], Found: true, ParentMatch: false}},
-	"glob-tests/bar/ffoo": {"", nil},
-	"glob-tests/barfoo":   {"", nil},
-	"glob-tests/foo/bar":  {"", &Result{Rule: TestFSGroups[3].rules[4], Found: true, ParentMatch: true}},
+	"glob-tests/foo":      {"", &Result{Rule: TestFSGroups[3].rules[4], Found: true, ParentMatch: false}, false},
+	"glob-tests/bar/foo":  {"", &Result{Rule: TestFSGroups[3].rules[4], Found: true, ParentMatch: false}, false},
+	"glob-tests/bar/ffoo": {"", nil, false},
+	"glob-tests/barfoo":   {"", nil, false},
+	"glob-tests/foo/bar":  {"", &Result{Rule: TestFSGroups[3].rules[4], Found: true, ParentMatch: true}, false},
 
 	// any/**
-	"glob-tests/any":         {"", nil},
-	"glob-tests/any/foo/bar": {"", &Result{Rule: TestFSGroups[3].rules[5], Found: true, ParentMatch: false}},
-	"glob-tests/any/foo":     {"", &Result{Rule: TestFSGroups[3].rules[5], Found: true, ParentMatch: false}},
-	"glob-tests/anyfoo/bar":  {"", nil},
+	"glob-tests/any":         {"", nil, false},
+	"glob-tests/any/foo/bar": {"", &Result{Rule: TestFSGroups[3].rules[5], Found: true, ParentMatch: false}, false},
+	"glob-tests/any/foo":     {"", &Result{Rule: TestFSGroups[3].rules[5], Found: true, ParentMatch: false}, false},
+	"glob-tests/anyfoo/bar":  {"", nil, false},
 
 	// something/**/more
-	"glob-tests/something/more":                     {"", &Result{Rule: TestFSGroups[3].rules[6], Found: true, ParentMatch: false}},
-	"glob-tests/something/much/much/more":           {"", &Result{Rule: TestFSGroups[3].rules[6], Found: true, ParentMatch: false}},
-	"glob-tests/something/much/much/more/andMOOORE": {"", &Result{Rule: TestFSGroups[3].rules[6], Found: true, ParentMatch: true}},
-	"glob-tests/something":                          {"", nil},
-	"glob-tests/somethingmore":                      {"", nil},
+	"glob-tests/something/more":                     {"", &Result{Rule: TestFSGroups[3].rules[6], Found: true, ParentMatch: false}, false},
+	"glob-tests/something/much/much/more":           {"", &Result{Rule: TestFSGroups[3].rules[6], Found: true, ParentMatch: false}, false},
+	"glob-tests/something/much/much/more/andMOOORE": {"", &Result{Rule: TestFSGroups[3].rules[6], Found: true, ParentMatch: true}, false},
+	"glob-tests/something":                          {"", nil, false},
+	"glob-tests/somethingmore":                      {"", nil, false},
 }
 
-func NewTestFS(t *testing.T) fs.FS {
-	memfs := afero.NewMemMapFs()
+func NewTestFS() fs.FS {
+	memfs := fstest.MapFS{}
 
 	for path, file := range testFS {
-		folder := filepath.Dir(path)
-		assert.NoError(t, memfs.MkdirAll(folder, os.ModeDir))
-		f, err := memfs.Create(path)
-		assert.NoError(t, err)
-		_, err = f.WriteString(file.data)
-		assert.NoError(t, err)
+		if file.isDir {
+			memfs[path] = &fstest.MapFile{Mode: fs.ModeDir}
+		} else {
+			memfs[path] = &fstest.MapFile{
+				Data: []byte(file.data),
+			}
+		}
 	}
 
-	return afero.NewIOFS(memfs)
+	return memfs
 }
 
 func TestCompile(t *testing.T) {
@@ -763,7 +762,7 @@ func TestCompile(t *testing.T) {
 			for i := range tt.wantRegexp {
 				assert.EqualValues(t, tt.wantRegexp[i], gotRule.Regexp[i].String())
 			}
-			
+
 			assert.Equal(t, tt.wantNegate, gotRule.Negate)
 			assert.Equal(t, tt.wantOnlyFolder, gotRule.OnlyFolder)
 			assert.Equal(t, tt.wantSkip, gotSkip)
@@ -779,7 +778,7 @@ func TestCompile(t *testing.T) {
 						if !gotMatches {
 							break
 						}
-					}					
+					}
 					assert.Equal(t, match.matches, gotMatches)
 				})
 			}
@@ -789,10 +788,10 @@ func TestCompile(t *testing.T) {
 
 func TestNoGo_AddAll(t *testing.T) {
 	type fields struct {
-		fs              fs.FS
-		groups          []group
-		ignoreFileNames []string
-		matchNoParents  bool
+		fs             fs.FS
+		groups         []group
+		ignoreFileName string
+		matchNoParents bool
 	}
 	tests := []struct {
 		name       string
@@ -803,8 +802,8 @@ func TestNoGo_AddAll(t *testing.T) {
 		{
 			name: "ignore files in NewTestFS() are parsed correctly",
 			fields: fields{
-				fs:              NewTestFS(t),
-				ignoreFileNames: []string{".gitignore"},
+				fs:             NewTestFS(),
+				ignoreFileName: ".gitignore",
 			},
 			wantErr:    false,
 			wantGroups: TestFSGroups,
@@ -813,13 +812,10 @@ func TestNoGo_AddAll(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			n := &NoGo{
-				fs:              tt.fields.fs,
-				groups:          tt.fields.groups,
-				ignoreFileNames: tt.fields.ignoreFileNames,
-				matchNoParents:  tt.fields.matchNoParents,
+				groups: tt.fields.groups,
 			}
+			err := n.AddFromFS(tt.fields.fs, tt.fields.ignoreFileName)
 
-			err := n.AddAll()
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
@@ -835,14 +831,9 @@ func TestNoGo_MatchPathBecause(t *testing.T) {
 	for path, tt := range testFS {
 		t.Run(path, func(t *testing.T) {
 			n := &NoGo{
-				fs:              NewTestFS(t),
-				groups:          TestFSGroups,
-				ignoreFileNames: []string{".gitignore"},
-				matchNoParents:  false,
+				groups: TestFSGroups,
 			}
-			gotMatch, gotBecause, err := n.MatchPathBecause(path)
-
-			require.NoError(t, err)
+			gotMatch, gotBecause := n.MatchBecause(path, tt.isDir)
 
 			if gotBecause.Negate {
 				assert.Equal(t, tt.ignoredBy == nil, gotMatch)

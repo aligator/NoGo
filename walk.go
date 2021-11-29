@@ -3,19 +3,27 @@ package nogo
 import (
 	"io/fs"
 	"path/filepath"
-
-	"github.com/spf13/afero"
 )
 
-type ignoreFS struct {
-	fs.FS
-	*NoGo
-}
+// WalkFunc can be used in any Walk function to automatically ignore ignored files.
+// It is similar to ForWalkDir but with it you can write a WalkFunc for any other (than fs.WalkDir) Walk function:
+//
+// Example for afero:
+//  err = afero.Walk(baseFS, ".", func(path string, info fs.FileInfo, err error) error {
+//		if ok, err := n.WalkFunc(afero.NewIOFS(baseFS), ".gitignore", path, info.IsDir(), err); !ok {
+//			return err
+//		}
+//
+//		fmt.Println(path, info.Name())
+//		return nil
+//	})
+func (n *NoGo) WalkFunc(fsys fs.FS, ignoreFileName string, path string, isDir bool, err error) (bool, error) {
+	if err != nil {
+		return false, err
+	}
 
-func (n *NoGo) walkFN(path string, isDir bool) (bool, error) {
 	if path != "." {
-		// If the rule is a negation rule, still proceed.
-		if n.MatchPathNoStat(path, isDir) {
+		if match, _ := n.MatchWithoutParents(path, isDir); match {
 			if isDir {
 				return false, fs.SkipDir
 			}
@@ -25,93 +33,37 @@ func (n *NoGo) walkFN(path string, isDir bool) (bool, error) {
 
 	if !isDir {
 		name := filepath.Base(path)
-		for _, ignoreFileName := range n.ignoreFileNames {
-			if name != ignoreFileName {
-				continue
-			}
-
-			err := n.AddFile(path)
+		if name == ignoreFileName {
+			// Look for new ignore files.
+			err := n.AddFile(fsys, path)
 			if err != nil {
 				return false, err
 			}
-			break
 		}
-
 	}
 
 	return true, nil
 }
 
-// AferoWalk walks the file tree rooted at root, calling walkFn for each file or
-// directory in the tree, including root. All errors that arise visiting files
-// and directories are filtered by walkFn. The files are walked in lexical
-// order, which makes the output deterministic but means that for very
-// large directories Walk can be inefficient.
-// Walk does not follow symbolic links.
+// ForWalkDir can be used to set all parameters of fs.WalkDir.
+// It only calls the passed WalkDirFunc for files and directories
+// which are not ignored.
 //
-// This implementation skips all folders and files according to the ignore
-// files found in the file-tree.
+// If you need something similar for any other Walk function (e.g. afero.Walk)
+// You can use WalkFunc for that.
 //
-// All options you pass, are applied to the internal NoGo instance.
-func AferoWalk(ignoreFileNames []string, fsys afero.Fs, fn filepath.WalkFunc, options ...Option) error {
-	iofs := afero.NewIOFS(fsys)
-	n := New(ignoreFileNames, WithFS(iofs), WithoutMatchParents())
-	n.Apply(options...)
-
-	ifs := &ignoreFS{
-		NoGo: n,
-		FS:   iofs,
-	}
-
-	return afero.Walk(fsys, ".", func(path string, info fs.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		ok, err := ifs.walkFN(path, info.IsDir())
-		if err != nil {
-			return err
-		}
-
-		if ok {
-			return fn(path, info, err)
-		}
-
-		return nil
-	})
-}
-
-// WalkDir walks the file tree rooted at root, calling fn for each file or
-// directory in the tree, including root.
-// This implementation skips all folders and files according to the ignore
-// files found in the file-tree.
-//
-// All options you pass, are applied to the internal NoGo instance.
-//
-// All errors that arise visiting files and directories are filtered by fn:
-// see the fs.WalkDirFunc documentation for details.
-//
-// The files are walked in lexical order, which makes the output deterministic
-// but requires WalkDir to read an entire directory into memory before proceeding
-// to walk that directory.
-//
-// WalkDir does not follow symbolic links found in directories,
-// but if root itself is a symbolic link, its target will be walked.
-func WalkDir(ignoreFileNames []string, fsys fs.FS, root string, fn fs.WalkDirFunc, options ...Option) error {
-	n := New(ignoreFileNames, WithFS(fsys), WithoutMatchParents())
-	n.Apply(options...)
-
-	ifs := &ignoreFS{
-		NoGo: n,
-		FS:   fsys,
-	}
-
-	return fs.WalkDir(ifs, root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		ok, err := ifs.walkFN(path, d.IsDir())
+// Example:
+//  n := nogo.New(nogo.DotGitRule)
+//  err = fs.WalkDir(n.ForWalkDir(walkFS, ".", ".gitignore", func(path string, d fs.DirEntry, err error) error {
+//		if err != nil {
+//			return err
+//		}
+//		fmt.Println(path, d.Name())
+//		return nil
+//	}))
+func (n *NoGo) ForWalkDir(fsys fs.FS, root string, ignoreFilename string, fn fs.WalkDirFunc) (fs.FS, string, fs.WalkDirFunc) {
+	return fsys, root, func(path string, d fs.DirEntry, err error) error {
+		ok, err := n.WalkFunc(fsys, ignoreFilename, path, d.IsDir(), err)
 		if err != nil {
 			return err
 		}
@@ -121,5 +73,5 @@ func WalkDir(ignoreFileNames []string, fsys fs.FS, root string, fn fs.WalkDirFun
 		}
 
 		return nil
-	})
+	}
 }
