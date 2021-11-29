@@ -36,7 +36,7 @@ if err := n.AddFromFS(wdfs, ".gitignore"); err != nil {
 ## Walk
 NoGo can be used with fs.WalkDir. [Just see the example walk.](example/walk/main.go)
 If you need to use another Walk function, you can build your own wrapper using 
-the `NoGo.WalkFN` function. 
+the `NoGo.WalkFunc` function. 
 
 Example for afero:
 I intentionally did not include this to avoid a new dependency
