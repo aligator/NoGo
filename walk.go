@@ -5,8 +5,10 @@ import (
 	"path/filepath"
 )
 
-// WalkFN can be used in any Walk function.
-// With it you can also write an afero compatible WalkFunc:
+// WalkFN can be used in any Walk function to automatically ignore ignored files.
+// It is similar to ForWalkDir but with it you can write a WalkFunc for any other (than fs.WalkDir) Walk function:
+//
+// Example for afero:
 //  err = afero.Walk(baseFS, ".", func(path string, info fs.FileInfo, err error) error {
 //		if ok, err := n.WalkFN(afero.NewIOFS(baseFS), ".gitignore", path, info.IsDir(), err); !ok {
 //			return err
