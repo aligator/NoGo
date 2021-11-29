@@ -23,7 +23,7 @@ func main() {
 	wdfs := os.DirFS(wd).(fs.StatFS)
 
 	n := nogo.New(nogo.DotGitRule)
-	if err := n.AddFromFS(wdfs, []string{".gitignore"}); err != nil {
+	if err := n.AddFromFS(wdfs, ".gitignore"); err != nil {
 		panic(err)
 	}
 

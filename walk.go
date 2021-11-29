@@ -8,14 +8,14 @@ import (
 // WalkFN can be used in any Walk function.
 // With it you can also write an afero compatible WalkFunc:
 //  err = afero.Walk(baseFS, ".", func(path string, info fs.FileInfo, err error) error {
-//		if ok, err := n.WalkFN(afero.NewIOFS(baseFS), []string{".gitignore"}, path, info.IsDir(), err); !ok {
+//		if ok, err := n.WalkFN(afero.NewIOFS(baseFS), ".gitignore", path, info.IsDir(), err); !ok {
 //			return err
 //		}
 //
 //		fmt.Println(path, info.Name())
 //		return nil
 //	})
-func (n *NoGo) WalkFN(fsys fs.FS, ignoreFileNames []string, path string, isDir bool, err error) (bool, error) {
+func (n *NoGo) WalkFN(fsys fs.FS, ignoreFileName string, path string, isDir bool, err error) (bool, error) {
 	if err != nil {
 		return false, err
 	}
@@ -31,27 +31,21 @@ func (n *NoGo) WalkFN(fsys fs.FS, ignoreFileNames []string, path string, isDir b
 
 	if !isDir {
 		name := filepath.Base(path)
-		for _, ignoreFileName := range ignoreFileNames {
-			if name != ignoreFileName {
-				continue
-			}
-
+		if name == ignoreFileName {
 			// Look for new ignore files.
 			err := n.AddFile(fsys, path)
 			if err != nil {
 				return false, err
 			}
-			break
 		}
-
 	}
 
 	return true, nil
 }
 
-func (n *NoGo) ForWalkDir(fsys fs.FS, root string, ignoreFilenames []string, fn fs.WalkDirFunc) (fs.FS, string, fs.WalkDirFunc) {
+func (n *NoGo) ForWalkDir(fsys fs.FS, root string, ignoreFilename string, fn fs.WalkDirFunc) (fs.FS, string, fs.WalkDirFunc) {
 	return fsys, root, func(path string, d fs.DirEntry, err error) error {
-		ok, err := n.WalkFN(fsys, ignoreFilenames, path, d.IsDir(), err)
+		ok, err := n.WalkFN(fsys, ignoreFilename, path, d.IsDir(), err)
 		if err != nil {
 			return err
 		}

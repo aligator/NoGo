@@ -14,7 +14,7 @@ The goal is to provide the exact same .gitignore handling.
 ## Usage
 ```go
 n := nogo.New(nogo.DotGitRule)
-if err := n.AddFromFS(wdfs, []string{".gitignore"}); err != nil {
+if err := n.AddFromFS(wdfs, ".gitignore"); err != nil {
     panic(err)
 }
 
@@ -28,7 +28,7 @@ the causing rule if you need some context.
 There exists a predefined rule to ignore any `.git` folder automatically.
 ```go
 n := nogo.New(nogo.DotGitRule)
-if err := n.AddFromFS(wdfs, []string{".gitignore"}); err != nil {
+if err := n.AddFromFS(wdfs, ".gitignore"); err != nil {
     panic(err)
 }
 ```
@@ -64,7 +64,7 @@ func main() {
 	n := nogo.New(nogo.DotGitRule)
 
 	err = afero.Walk(baseFS, ".", func(path string, info fs.FileInfo, err error) error {
-		if ok, err := n.WalkFN(afero.NewIOFS(baseFS), []string{".gitignore"}, path, info.IsDir(), err); !ok {
+		if ok, err := n.WalkFN(afero.NewIOFS(baseFS), ".gitignore", path, info.IsDir(), err); !ok {
 			return err
 		}
 

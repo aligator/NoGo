@@ -788,10 +788,10 @@ func TestCompile(t *testing.T) {
 
 func TestNoGo_AddAll(t *testing.T) {
 	type fields struct {
-		fs              fs.FS
-		groups          []group
-		ignoreFileNames []string
-		matchNoParents  bool
+		fs             fs.FS
+		groups         []group
+		ignoreFileName string
+		matchNoParents bool
 	}
 	tests := []struct {
 		name       string
@@ -802,8 +802,8 @@ func TestNoGo_AddAll(t *testing.T) {
 		{
 			name: "ignore files in NewTestFS() are parsed correctly",
 			fields: fields{
-				fs:              NewTestFS(),
-				ignoreFileNames: []string{".gitignore"},
+				fs:             NewTestFS(),
+				ignoreFileName: ".gitignore",
 			},
 			wantErr:    false,
 			wantGroups: TestFSGroups,
@@ -814,7 +814,7 @@ func TestNoGo_AddAll(t *testing.T) {
 			n := &NoGo{
 				groups: tt.fields.groups,
 			}
-			err := n.AddFromFS(tt.fields.fs, tt.fields.ignoreFileNames)
+			err := n.AddFromFS(tt.fields.fs, tt.fields.ignoreFileName)
 
 			if tt.wantErr {
 				require.Error(t, err)

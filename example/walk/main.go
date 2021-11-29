@@ -16,7 +16,7 @@ func main() {
 	walkFS := os.DirFS(wd)
 	n := nogo.New(nogo.DotGitRule)
 
-	err = fs.WalkDir(n.ForWalkDir(walkFS, ".", []string{".gitignore"}, func(path string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(n.ForWalkDir(walkFS, ".", ".gitignore", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
