@@ -16,6 +16,12 @@ func main() {
 	walkFS := os.DirFS(wd)
 	n := nogo.New(nogo.DotGitRule)
 
+	// Important: The NoGo instance (n) is NOT IMMUTABLE!
+	// While walking the tree it automatically loads all found .gitignore files
+	// and parses the rules of it.
+	//
+	// -> After running the WalkDir, 'n' contains the same
+	// rules as if you had used CompileAll().
 	err = fs.WalkDir(n.ForWalkDir(walkFS, ".", ".gitignore", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
