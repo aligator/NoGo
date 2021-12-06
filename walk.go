@@ -1,6 +1,7 @@
 package nogo
 
 import (
+	"errors"
 	"io/fs"
 	"path/filepath"
 )
@@ -31,14 +32,10 @@ func (n *NoGo) WalkFunc(fsys fs.FS, ignoreFileName string, path string, isDir bo
 		}
 	}
 
-	if !isDir {
-		name := filepath.Base(path)
-		if name == ignoreFileName {
-			// Look for new ignore files.
-			err := n.AddFile(fsys, path)
-			if err != nil {
-				return false, err
-			}
+	if isDir {
+		err := n.AddFile(fsys, filepath.Join(path, ignoreFileName))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return false, err
 		}
 	}
 
