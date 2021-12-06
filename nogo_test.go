@@ -115,28 +115,29 @@ var (
 	}
 )
 
-var testFS = map[string]struct {
+var TestFSData = map[string]struct {
 	data      string
 	ignoredBy *Result
 	isDir     bool
 }{
-	".gitignore":                                       {"globallyIgnored\naPartiallyIgnoredFolder/**\n!aPartiallyIgnoredFolder/.gitignore\naFolder/ignoredFile\nignoredFolder/\nignoredFolder-notAFolder/", nil, false},
-	"ignoredFolder":                                    {"", &Result{Rule: TestFSGroups[0].rules[4], Found: true, ParentMatch: false}, true},
-	"ignoredFolder-notAFolder":                         {"", nil, false},
-	"globallyIgnored":                                  {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: false}, false},
-	"aFile":                                            {"", nil, false},
-	"aFolder/ignoredFile":                              {"", &Result{Rule: TestFSGroups[0].rules[3], Found: true, ParentMatch: false}, false},
-	"aFolder/ignoredFolder":                            {"", nil, false}, // aFolder/ignoredFolder is actually no folder -> not ignored
-	"aFolder/notIgnored":                               {"", nil, false},
-	"aFolder/locallyIgnoredFile":                       {"", &Result{Rule: TestFSGroups[1].rules[0], Found: true, ParentMatch: false}, false},
-	"aFolder/.gitignore":                               {"/locallyIgnoredFile\n/ignoredSubFolder", nil, false},
-	"aFolder/ignoredSubFolder/aFile":                   {"", &Result{Rule: TestFSGroups[1].rules[1], Found: true, ParentMatch: true}, false},
-	"aFolder/ignoredSubFolder/anotherFile":             {"", &Result{Rule: TestFSGroups[1].rules[1], Found: true, ParentMatch: true}, false},
-	"aPartiallyIgnoredFolder/.gitignore":               {"!unignoredFile", &Result{Rule: TestFSGroups[0].rules[2], Found: true, ParentMatch: false}, false},
-	"aPartiallyIgnoredFolder/unignoredFile":            {"", &Result{Rule: TestFSGroups[2].rules[0], Found: true, ParentMatch: false}, false},
-	"aPartiallyIgnoredFolder/ignoredFile":              {"", &Result{Rule: TestFSGroups[0].rules[1], Found: true, ParentMatch: false}, false},
-	"aPartiallyIgnoredFolder/ignoredFolder/.gitignore": {"notParsed as it is in an ignored folder", &Result{Rule: TestFSGroups[0].rules[1], Found: true, ParentMatch: false}, false},
-	"aFolder/anotherFolder/globallyIgnored":            {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: false}, false},
+	".gitignore":               {"globallyIgnored\naPartiallyIgnoredFolder/**\n!aPartiallyIgnoredFolder/.gitignore\naFolder/ignoredFile\nignoredFolder/\nignoredFolder-notAFolder/", nil, false},
+	"ignoredFolder":            {"", &Result{Rule: TestFSGroups[0].rules[4], Found: true, ParentMatch: false}, true},
+	"ignoredFolder-notAFolder": {"", nil, false},
+	"globallyIgnored":          {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: false}, false},
+	"aFile":                    {"", nil, false},
+	"aFolder/ignoredFile":      {"", &Result{Rule: TestFSGroups[0].rules[3], Found: true, ParentMatch: false}, false},
+	// aFolder/ignoredFolder is actually no folder -> not ignored
+	"aFolder/ignoredFolder":                                        {"", nil, false},
+	"aFolder/notIgnored":                                           {"", nil, false},
+	"aFolder/locallyIgnoredFile":                                   {"", &Result{Rule: TestFSGroups[1].rules[0], Found: true, ParentMatch: false}, false},
+	"aFolder/.gitignore":                                           {"/locallyIgnoredFile\n/ignoredSubFolder", nil, false},
+	"aFolder/ignoredSubFolder/aFile":                               {"", &Result{Rule: TestFSGroups[1].rules[1], Found: true, ParentMatch: true}, false},
+	"aFolder/ignoredSubFolder/anotherFile":                         {"", &Result{Rule: TestFSGroups[1].rules[1], Found: true, ParentMatch: true}, false},
+	"aPartiallyIgnoredFolder/.gitignore":                           {"!unignoredFile", &Result{Rule: TestFSGroups[0].rules[2], Found: true, ParentMatch: false}, false},
+	"aPartiallyIgnoredFolder/unignoredFile":                        {"", &Result{Rule: TestFSGroups[2].rules[0], Found: true, ParentMatch: false}, false},
+	"aPartiallyIgnoredFolder/ignoredFile":                          {"", &Result{Rule: TestFSGroups[0].rules[1], Found: true, ParentMatch: false}, false},
+	"aPartiallyIgnoredFolder/ignoredFolder/.gitignore":             {"notParsed as it is in an ignored folder", &Result{Rule: TestFSGroups[0].rules[1], Found: true, ParentMatch: false}, false},
+	"aFolder/anotherFolder/globallyIgnored":                        {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: false}, false},
 	"aFolder/anotherFolder/globallyIgnored/aFileInGloballyIgnored": {"", &Result{Rule: TestFSGroups[0].rules[0], Found: true, ParentMatch: true}, false},
 
 	"glob-tests/.gitignore": {"/file*withStar\n/question?mark??file???\n/file[a-z]with[!0-9]ranges\n/file**withDoubleStar\n**/foo\nany/**\nsomething/**/more", nil, false},
@@ -187,7 +188,7 @@ var testFS = map[string]struct {
 func NewTestFS() fs.FS {
 	memfs := fstest.MapFS{}
 
-	for path, file := range testFS {
+	for path, file := range TestFSData {
 		if file.isDir {
 			memfs[path] = &fstest.MapFile{Mode: fs.ModeDir}
 		} else {
@@ -841,7 +842,7 @@ func TestNoGo_AddAll(t *testing.T) {
 }
 
 func TestNoGo_MatchPathBecause(t *testing.T) {
-	for path, tt := range testFS {
+	for path, tt := range TestFSData {
 		t.Run(path, func(t *testing.T) {
 			n := &NoGo{
 				groups: TestFSGroups,

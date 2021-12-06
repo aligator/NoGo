@@ -33,9 +33,13 @@ func (n *NoGo) WalkFunc(fsys fs.FS, ignoreFileName string, path string, isDir bo
 	}
 
 	if isDir {
-		err := n.AddFile(fsys, filepath.Join(path, ignoreFileName))
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return false, err
+		// Load a maybe existing ignore file if it is not itself ignored.
+		possibleIgnoreFile := filepath.Join(path, ignoreFileName)
+		if match, _ := n.MatchWithoutParents(possibleIgnoreFile, false); !match {
+			err := n.AddFile(fsys, filepath.Join(path, ignoreFileName))
+			if err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return false, err
+			}
 		}
 	}
 
