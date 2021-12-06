@@ -1,6 +1,7 @@
 package nogo
 
 import (
+	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"io/fs"
@@ -39,6 +40,14 @@ func TestNoGo_WalkFunc(t *testing.T) {
 			},
 			want:    true,
 			wantErr: assert.NoError,
+		},
+		{
+			name: "error is set",
+			args: args{
+				err: errors.New("an error"),
+			},
+			want:    false,
+			wantErr: assert.Error,
 		},
 		{
 			name: "ignored folder",
@@ -143,6 +152,74 @@ func TestNoGo_WalkFunc(t *testing.T) {
 				},
 			},
 			wantErr: assert.NoError,
+		},
+		{
+			name: "ignore file which doesn't exist should be ignored",
+			fields: fields{
+				groups: []group{
+					{
+						prefix: "",
+						rules: []Rule{
+							{
+								Regexp: []*regexp.Regexp{regexp.MustCompile(`\.gitignore`)},
+							},
+						},
+					},
+				},
+			},
+			args: args{
+				fsys:           NewTestFS(),
+				ignoreFileName: "noIgnoreFile",
+				path:           "",
+				isDir:          true,
+			},
+			// But still return ok as the folder itself is not ignored.
+			want: true,
+			wantGroups: []group{
+				{
+					prefix: "",
+					rules: []Rule{
+						{
+							Regexp: []*regexp.Regexp{regexp.MustCompile(`\.gitignore`)},
+						},
+					},
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "ignore file which is actually a folder should throw an error (only an example for any reading error)",
+			fields: fields{
+				groups: []group{
+					{
+						prefix: "",
+						rules: []Rule{
+							{
+								Regexp: []*regexp.Regexp{regexp.MustCompile(`\.gitignore`)},
+							},
+						},
+					},
+				},
+			},
+			args: args{
+				fsys:           NewTestFS(),
+				ignoreFileName: "aFolder",
+				path:           "",
+				isDir:          true,
+			},
+			// But still return ok as the folder itself is not ignored.
+			want: false,
+			wantGroups: []group{
+				{
+					prefix: "",
+					rules: []Rule{
+						{
+							Regexp: []*regexp.Regexp{regexp.MustCompile(`\.gitignore`)},
+						},
+					},
+				},
+			},
+			wantErr: assert.Error,
 		},
 	}
 	for _, tt := range tests {

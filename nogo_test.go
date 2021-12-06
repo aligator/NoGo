@@ -218,7 +218,7 @@ func TestCompile(t *testing.T) {
 		wantRegexp     []string
 		wantNegate     bool
 		wantOnlyFolder bool
-		wantErr        bool
+		wantErr        assert.ErrorAssertionFunc
 		wantMatches    []matches
 	}{
 		{
@@ -250,6 +250,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFile.go",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "a specific file in a sub folder (using a '/' in the middle)",
@@ -280,6 +281,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/sub/aFile.go",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "a specific folder in a sub folder (using a '/' in the middle and at the end)",
@@ -301,6 +303,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/sub/aFolder/aFile",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "a file anywhere below",
@@ -326,6 +329,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/sub/aFile.go",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "a file anywhere below with empty prefix",
@@ -356,6 +360,7 @@ func TestCompile(t *testing.T) {
 					input:   "sub/aFile.go",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "single star to allow any suffix of the file",
@@ -381,6 +386,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFile.",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "single star in the middle of a folder name",
@@ -401,6 +407,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFolderIsHere/nogo.go",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "question mark at the end",
@@ -426,6 +433,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFolder/nogo.jsxy",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "question mark in the middle",
@@ -456,6 +464,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFolder/yay/nogo.go",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "several question mark in the middle",
@@ -491,6 +500,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFolder-/-yay/nogo.go",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "some special regexp chars in the pattern",
@@ -506,6 +516,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFol^der/n{o}go.go",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "escaped stars and question marks",
@@ -521,6 +532,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aF??older/no*go.go",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "fnmatch matching only special characters",
@@ -551,6 +563,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFolder/nogo.jts",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "fnmatch matching range special characters",
@@ -581,6 +594,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFolder/nogo.abs",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "fnmatch matching negated range special characters",
@@ -611,6 +625,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFolder/nogo.ABs",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "fnmatch matching escaped [ and ]",
@@ -626,6 +641,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFolder/nogo.[!a-z]s",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "ignore empty pattern",
@@ -635,6 +651,7 @@ func TestCompile(t *testing.T) {
 			},
 			wantRegexp: nil,
 			wantSkip:   true,
+			wantErr:    assert.NoError,
 		},
 		{
 			name: "ignore with # prefix",
@@ -643,6 +660,7 @@ func TestCompile(t *testing.T) {
 				pattern: "# anything",
 			},
 			wantSkip: true,
+			wantErr:  assert.NoError,
 		},
 		{
 			name: "do not ignore escaped #-prefix and use that # as part of the file name",
@@ -658,6 +676,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/#aFile",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "Strip off suffix spaces",
@@ -678,6 +697,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFile/isHere   ",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "Do not strip off suffix spaces if the last was escaped",
@@ -698,6 +718,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFile/isHere",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "negate match - Note, the regexp matching is not negated, but a flag is set.",
@@ -729,6 +750,7 @@ func TestCompile(t *testing.T) {
 					input:   "a/folder/aFile.go",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "dot in prefix",
@@ -744,6 +766,7 @@ func TestCompile(t *testing.T) {
 					input:   ".idea/workspace.xml",
 				},
 			},
+			wantErr: assert.NoError,
 		},
 		{
 			name: "empty prefix",
@@ -759,16 +782,32 @@ func TestCompile(t *testing.T) {
 					input:   ".git",
 				},
 			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "open [ in pattern",
+			args: args{
+				prefix:  "",
+				pattern: "[lool",
+			},
+			wantErr: assert.Error,
+		},
+		{
+			name: "escaped open [ in pattern",
+			args: args{
+				prefix:  "",
+				pattern: `\[lool`,
+			},
+			wantRegexp: []string{`^(.*/)?\[lool$`},
+			wantErr:    assert.NoError,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.args.pattern+"|"+tt.name, func(t *testing.T) {
 			gotSkip, gotRule, err := Compile(tt.args.prefix, tt.args.pattern)
 
-			if tt.wantErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
+			if tt.wantErr(t, err) {
+				return
 			}
 
 			require.Equal(t, len(tt.wantRegexp), len(gotRule.Regexp))

@@ -183,9 +183,9 @@ func Compile(prefix string, pattern string) (skip bool, rule Rule, err error) {
 		// Now replace back the escaped brackets.
 		p = strings.ReplaceAll(p, escapedMatchStart, `[`)
 		p = strings.ReplaceAll(p, escapedMatchEnd, `]`)
-		pattern = strings.ReplaceAll(pattern, negatedMatchStart, "[^")
-		pattern = strings.ReplaceAll(pattern, matchStart, "[")
-		pattern = strings.ReplaceAll(pattern, matchEnd, "]")
+		p = strings.ReplaceAll(p, negatedMatchStart, "[^")
+		p = strings.ReplaceAll(p, matchStart, "[")
+		p = strings.ReplaceAll(p, matchEnd, "]")
 
 		reg, err := regexp.Compile("^" + regexp.QuoteMeta(prefix) + strings.TrimPrefix(p, "/") + "$")
 		if err != nil {
