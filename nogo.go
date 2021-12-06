@@ -192,13 +192,5 @@ func (n *NoGo) match(path string, isDir bool, noParents bool) (match bool, becau
 		}
 	}
 
-	if because.Found && because.OnlyFolder && !isDir && because.ParentMatch {
-		return false, because
-	}
-
-	if because.Found && because.Negate {
-		return false, because
-	}
-
-	return because.Found, because
+	return because.Resolve(isDir), because
 }

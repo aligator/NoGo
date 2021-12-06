@@ -880,7 +880,7 @@ func TestNoGo_AddAll(t *testing.T) {
 	}
 }
 
-func TestNoGo_MatchPathBecause(t *testing.T) {
+func TestNoGo_MatchBecause(t *testing.T) {
 	for path, tt := range TestFSData {
 		t.Run(path, func(t *testing.T) {
 			n := &NoGo{
@@ -899,4 +899,99 @@ func TestNoGo_MatchPathBecause(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNoGo_MatchWithoutParents(t *testing.T) {
+	for path, tt := range TestFSData {
+		t.Run(path, func(t *testing.T) {
+			n := &NoGo{
+				groups: TestFSGroups,
+			}
+			gotMatch, gotBecause := n.MatchWithoutParents(path, tt.isDir)
+
+			// The same test as TestNoGo_MatchBecause, but ignore all parent matches.
+			if tt.ignoredBy != nil && tt.ignoredBy.ParentMatch {
+				tt.ignoredBy = nil
+			}
+
+			if gotBecause.Negate {
+				assert.Equal(t, tt.ignoredBy == nil, gotMatch)
+			} else {
+				assert.Equal(t, tt.ignoredBy != nil, gotMatch)
+			}
+
+			if tt.ignoredBy != nil {
+				assert.EqualValues(t, *tt.ignoredBy, gotBecause)
+			}
+		})
+	}
+
+	t.Run("file which would be matched by a parent with onlyFolder", func(t *testing.T) {
+		n := &NoGo{
+			groups: []group{
+				{
+					prefix: "",
+					rules: []Rule{
+						{
+							Regexp: []*regexp.Regexp{regexp.MustCompile(`^(.*/)?anIgnoredFolder$`)},
+							Prefix: "",
+						},
+					},
+				},
+				{
+					prefix: "anIgnoredFolder",
+					rules: []Rule{
+						{
+							Regexp: []*regexp.Regexp{regexp.MustCompile(`^anIgnoredFolder/aFile$`)},
+							Prefix: "anIgnoredFolder",
+							// Even if it is a file in this example, apply the rule only on folders:
+							OnlyFolder: true,
+						},
+						{
+							Regexp: []*regexp.Regexp{regexp.MustCompile(`^anIgnoredFolder/anotherFile$`)},
+							Prefix: "anIgnoredFolder",
+						},
+					},
+				},
+			},
+		}
+
+		// Should be matched by the normal match: (as the parent folder is not checked for OnlyFolder):
+		gotMatch, gotBecause := n.MatchBecause("anIgnoredFolder/aFile", false)
+		assert.True(t, gotMatch)
+		assert.True(t, gotBecause.Resolve(false))
+		assert.EqualValues(t, Result{
+			Rule:        n.groups[0].rules[0],
+			Found:       true,
+			ParentMatch: true,
+		}, gotBecause)
+
+		// But it should not be matched by MatchWithoutParents: (as the parent folder is never
+		// checked and therefore the file is not ignored for being inside an ignored folder)
+		// Also as it is a file it doesn't match the OnlyFolder rule:
+		gotMatch, gotBecause = n.MatchWithoutParents("anIgnoredFolder/aFile", false)
+		assert.False(t, gotMatch)
+		assert.False(t, gotBecause.Resolve(false))
+		assert.EqualValues(t, Result{}, gotBecause)
+
+		// Should be matched by the normal match:
+		gotMatch, gotBecause = n.MatchBecause("anIgnoredFolder/anotherFile", false)
+		assert.True(t, gotMatch)
+		assert.True(t, gotBecause.Resolve(false))
+		assert.EqualValues(t, Result{
+			Rule:        n.groups[1].rules[1],
+			Found:       true,
+			ParentMatch: false,
+		}, gotBecause)
+
+		// And it should also match with MatchWithoutParents as the file is matched inside the folder directly:
+		gotMatch, gotBecause = n.MatchWithoutParents("anIgnoredFolder/anotherFile", false)
+		assert.True(t, gotMatch)
+		assert.True(t, gotBecause.Resolve(false))
+		assert.EqualValues(t, Result{
+			Rule:        n.groups[1].rules[1],
+			Found:       true,
+			ParentMatch: false,
+		}, gotBecause)
+	})
 }
