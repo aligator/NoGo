@@ -867,7 +867,7 @@ func TestNoGo_AddAll(t *testing.T) {
 			n := &NoGo{
 				groups: tt.fields.groups,
 			}
-			err := n.AddFromFS(tt.fields.fs, tt.fields.ignoreFileName)
+			err := n.addFromFS(tt.fields.fs, tt.fields.ignoreFileName)
 
 			if tt.wantErr {
 				require.Error(t, err)

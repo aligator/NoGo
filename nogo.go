@@ -32,6 +32,7 @@
 package nogo
 
 import (
+	"errors"
 	"io"
 	"io/fs"
 	"path/filepath"
@@ -47,25 +48,49 @@ type NoGo struct {
 	groups []group
 }
 
-// New creates a NoGo instance which works for the given ignoreFileNames.
-// You can pass additional options if needed.
-func New(rules ...Rule) *NoGo {
-	n := &NoGo{}
-	n.AddRules(rules...)
+// New creates a NoGo instance with the given rules.
+func New(rules ...Rule) NoGo {
+	n := NoGo{}
+	n.addRules(rules...)
 	return n
 }
 
-// AddFromFS ignore files which can be found in the given fsys.
+// ForFS creates a NoGo instance which adds all rules in the given filesystem.
+// You can pass additional options if needed.
+func ForFS(fsys fs.FS, ignoreFilename string, rules ...Rule) (NoGo, error) {
+	n := New(rules...)
+	err := n.addFromFS(fsys, ignoreFilename)
+	if err != nil {
+		return NoGo{}, err
+	}
+	return n, nil
+}
+
+// addFromFS ignore files which can be found in the given fsys.
 // It only loads ignore files which are not ignored itself by another file.
-func (n *NoGo) AddFromFS(fsys fs.FS, ignoreFilename string) error {
-	return fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
-		_, err = n.WalkFunc(fsys, ignoreFilename, path, d.IsDir(), err)
-		return err
-	})
+func (n *NoGo) addFromFS(fsys fs.FS, ignoreFilename string) error {
+	return fs.WalkDir(fsys, ".", n.WalkDirFunc(func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			// Load a maybe existing ignore file if it is not itself ignored.
+			possibleIgnoreFile := filepath.Join(path, ignoreFilename)
+			if match, _ := n.MatchWithoutParents(possibleIgnoreFile, false); !match {
+				err := n.addFile(fsys, filepath.Join(path, ignoreFilename))
+				if err != nil && !errors.Is(err, fs.ErrNotExist) {
+					return err
+				}
+			}
+		}
+
+		return nil
+	}))
 }
 
 // AddRules to NoGo which are already compiled.
-func (n *NoGo) AddRules(rules ...Rule) {
+func (n *NoGo) addRules(rules ...Rule) {
 	for _, rule := range rules {
 		n.groups = append(n.groups, group{
 			prefix: rule.Prefix,
@@ -74,7 +99,7 @@ func (n *NoGo) AddRules(rules ...Rule) {
 	}
 }
 
-// AddFile reads the given file and tries to load the content as an ignore file.
+// addFile reads the given file and tries to load the content as an ignore file.
 // It does not check the filename. So you can add any file, independently of
 // the configured ignoreFileNames.
 //
@@ -84,7 +109,7 @@ func (n *NoGo) AddRules(rules ...Rule) {
 // You should always first add the rules of parent folders and then of the
 // children folders.
 // TODO: in the future the rules could be re-sorted based on the prefix names.
-func (n *NoGo) AddFile(fsys fs.FS, path string) error {
+func (n *NoGo) addFile(fsys fs.FS, path string) error {
 	file, err := fsys.Open(path)
 	if err != nil {
 		return err
@@ -116,7 +141,7 @@ func (n *NoGo) AddFile(fsys fs.FS, path string) error {
 // Match calculates if the path matches any rule.
 // It does the same as MatchBecause but only returns the boolean
 // for more easy in-if usage.
-func (n *NoGo) Match(path string, isDir bool) bool {
+func (n NoGo) Match(path string, isDir bool) bool {
 	match, _ := n.MatchBecause(path, isDir)
 	return match
 }
@@ -126,7 +151,7 @@ func (n *NoGo) Match(path string, isDir bool) bool {
 // Use Match if you do not need the cause.
 //
 // You have to pass if the path is a directory or not using isDir.
-func (n *NoGo) MatchBecause(path string, isDir bool) (match bool, because Result) {
+func (n NoGo) MatchBecause(path string, isDir bool) (match bool, because Result) {
 	return n.match(path, isDir, false)
 }
 
@@ -160,11 +185,11 @@ func (n *NoGo) MatchBecause(path string, isDir bool) (match bool, because Result
 // as the Folder1 won't be read and therefore /Folder1/File1 won't be read either.
 //
 // But when checking only the file /Folder1/File1 directly, you will NOT want "WithoutMatchParents".
-func (n *NoGo) MatchWithoutParents(path string, isDir bool) (match bool, because Result) {
+func (n NoGo) MatchWithoutParents(path string, isDir bool) (match bool, because Result) {
 	return n.match(path, isDir, true)
 }
 
-func (n *NoGo) match(path string, isDir bool, noParents bool) (match bool, because Result) {
+func (n NoGo) match(path string, isDir bool, noParents bool) (match bool, because Result) {
 	pathToCheck := []string{path}
 	if !noParents {
 		// Convert to slash for windows compatibility before splitting.
