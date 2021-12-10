@@ -22,8 +22,8 @@ func main() {
 	// DirFs actually implements StatFS, so we can use it.
 	wdfs := os.DirFS(wd).(fs.StatFS)
 
-	n := nogo.New(nogo.DotGitRule)
-	if err := n.AddFromFS(wdfs, ".gitignore"); err != nil {
+	n, err := nogo.ForFS(wdfs, ".gitignore", nogo.DotGitRule)
+	if err != nil {
 		panic(err)
 	}
 
