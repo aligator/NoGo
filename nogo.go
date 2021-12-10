@@ -167,8 +167,8 @@ func (n NoGo) MatchBecause(path string, isDir bool) (match bool, because Result)
 // all parents being checked before.
 //
 // As the parent-check is time-consuming it is for example better to disable
-// that check when using Walk function.
-// (NoGo.WalkDirFunc and NoGo.WalkAferoFunc use it for example).
+// that check when using Walk functions.
+// (NoGo.WalkDirFunc and NoGo.WalkFunc use it for example).
 //
 // Example:
 //  Folder1
