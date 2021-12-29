@@ -32,6 +32,7 @@
 package nogo
 
 import (
+	"errors"
 	"io"
 	"io/fs"
 	"path/filepath"
@@ -56,12 +57,26 @@ func New(rules ...Rule) *NoGo {
 }
 
 // AddFromFS ignore files which can be found in the given fsys.
-// It only loads ignore files which are not ignored itself by another file.
+// It only loads ignore files which are not ignored itself by another ignore-file.
 func (n *NoGo) AddFromFS(fsys fs.FS, ignoreFilename string) error {
-	return fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
-		_, err = n.WalkFunc(fsys, ignoreFilename, path, d.IsDir(), err)
-		return err
-	})
+	return fs.WalkDir(n.ForWalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			// Load a maybe existing ignore file if it is not itself ignored.
+			possibleIgnoreFile := filepath.Join(path, ignoreFilename)
+			if match, _ := n.MatchWithoutParents(possibleIgnoreFile, false); !match {
+				err := n.AddFile(fsys, filepath.Join(path, ignoreFilename))
+				if err != nil && !errors.Is(err, fs.ErrNotExist) {
+					return err
+				}
+			}
+		}
+
+		return nil
+	}))
 }
 
 // AddRules to NoGo which are already compiled.

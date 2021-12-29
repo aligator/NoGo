@@ -11,6 +11,9 @@ As far as I could test it, it handles .gitignore files the same way as git.
 If you find an inconsistency with git, please create a new Issue.  
 The goal is to provide the exact same .gitignore handling.
 
+## Stability
+Note that this lib is currently beta and therefore may introduce breaking changes.
+
 ## Usage
 ```go
 n := nogo.New(nogo.DotGitRule)

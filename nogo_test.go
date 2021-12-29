@@ -1,12 +1,13 @@
 package nogo
 
 import (
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"io/fs"
 	"regexp"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -844,7 +845,6 @@ func TestNoGo_AddAll(t *testing.T) {
 		fs             fs.FS
 		groups         []group
 		ignoreFileName string
-		matchNoParents bool
 	}
 	tests := []struct {
 		name       string

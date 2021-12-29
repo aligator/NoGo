@@ -3,10 +3,11 @@ package nogo
 import (
 	"errors"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io/fs"
 	"regexp"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNoGo_WalkFunc(t *testing.T) {
@@ -21,12 +22,11 @@ func TestNoGo_WalkFunc(t *testing.T) {
 		err            error
 	}
 	tests := []struct {
-		name       string
-		fields     fields
-		args       args
-		want       bool
-		wantGroups []group
-		wantErr    assert.ErrorAssertionFunc
+		name    string
+		fields  fields
+		args    args
+		want    bool
+		wantErr assert.ErrorAssertionFunc
 	}{
 		{
 			name: "not ignored file",
@@ -44,7 +44,10 @@ func TestNoGo_WalkFunc(t *testing.T) {
 		{
 			name: "error is set",
 			args: args{
-				err: errors.New("an error"),
+				fsys:           NewTestFS(),
+				ignoreFileName: ".gitignore",
+				path:           "aFile",
+				err:            errors.New("an error"),
 			},
 			want:    false,
 			wantErr: assert.Error,
@@ -76,13 +79,7 @@ func TestNoGo_WalkFunc(t *testing.T) {
 				path:           "",
 				isDir:          true,
 			},
-			want: true,
-			wantGroups: []group{
-				{
-					prefix: "",
-					rules:  TestFSGroups[0].rules,
-				},
-			},
+			want:    true,
 			wantErr: assert.NoError,
 		},
 		{
@@ -106,17 +103,7 @@ func TestNoGo_WalkFunc(t *testing.T) {
 				isDir:          true,
 			},
 			// But still return ok as the folder itself is not ignored.
-			want: true,
-			wantGroups: []group{
-				{
-					prefix: "",
-					rules: []Rule{
-						{
-							Regexp: []*regexp.Regexp{regexp.MustCompile(`\.gitignore`)},
-						},
-					},
-				},
-			},
+			want:    true,
 			wantErr: assert.NoError,
 		},
 		{
@@ -140,17 +127,7 @@ func TestNoGo_WalkFunc(t *testing.T) {
 				isDir:          true,
 			},
 			// But still return ok as the folder itself is not ignored.
-			want: true,
-			wantGroups: []group{
-				{
-					prefix: "",
-					rules: []Rule{
-						{
-							Regexp: []*regexp.Regexp{regexp.MustCompile(`\.gitignore`)},
-						},
-					},
-				},
-			},
+			want:    true,
 			wantErr: assert.NoError,
 		},
 		{
@@ -174,52 +151,8 @@ func TestNoGo_WalkFunc(t *testing.T) {
 				isDir:          true,
 			},
 			// But still return ok as the folder itself is not ignored.
-			want: true,
-			wantGroups: []group{
-				{
-					prefix: "",
-					rules: []Rule{
-						{
-							Regexp: []*regexp.Regexp{regexp.MustCompile(`\.gitignore`)},
-						},
-					},
-				},
-			},
+			want:    true,
 			wantErr: assert.NoError,
-		},
-		{
-			name: "ignore file which is actually a folder should throw an error (only an example for any reading error)",
-			fields: fields{
-				groups: []group{
-					{
-						prefix: "",
-						rules: []Rule{
-							{
-								Regexp: []*regexp.Regexp{regexp.MustCompile(`\.gitignore`)},
-							},
-						},
-					},
-				},
-			},
-			args: args{
-				fsys:           NewTestFS(),
-				ignoreFileName: "aFolder",
-				path:           "",
-				isDir:          true,
-			},
-			// But still return ok as the folder itself is not ignored.
-			want: false,
-			wantGroups: []group{
-				{
-					prefix: "",
-					rules: []Rule{
-						{
-							Regexp: []*regexp.Regexp{regexp.MustCompile(`\.gitignore`)},
-						},
-					},
-				},
-			},
-			wantErr: assert.Error,
 		},
 	}
 	for _, tt := range tests {
@@ -227,15 +160,14 @@ func TestNoGo_WalkFunc(t *testing.T) {
 			n := &NoGo{
 				groups: tt.fields.groups,
 			}
-			got, err := n.WalkFunc(tt.args.fsys, tt.args.ignoreFileName, tt.args.path, tt.args.isDir, tt.args.err)
+
+			assert.NoError(t, n.AddFromFS(tt.args.fsys, tt.args.ignoreFileName))
+
+			got, err := n.WalkFunc(tt.args.fsys, tt.args.path, tt.args.isDir, tt.args.err)
 			if !tt.wantErr(t, err, fmt.Sprintf("WalkFunc(%v, %v, %v, %v, %v)", tt.args.fsys, tt.args.ignoreFileName, tt.args.path, tt.args.isDir, tt.args.err)) {
 				return
 			}
 			assert.Equalf(t, tt.want, got, "WalkFunc(%v, %v, %v, %v, %v)", tt.args.fsys, tt.args.ignoreFileName, tt.args.path, tt.args.isDir, tt.args.err)
-
-			if tt.wantGroups != nil {
-				assert.Equal(t, tt.wantGroups, n.groups)
-			}
 		})
 	}
 }
