@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/aligator/nogo"
 	"io/fs"
 	"os"
+
+	"github.com/aligator/nogo"
 )
 
 func main() {
@@ -16,13 +17,13 @@ func main() {
 	walkFS := os.DirFS(wd)
 	n := nogo.New(nogo.DotGitRule)
 
-	// Important: The NoGo instance (n) is NOT IMMUTABLE!
-	// While walking the tree it automatically loads all found .gitignore files
-	// and parses the rules of it.
-	//
-	// -> After running the WalkDir, 'n' contains the same
-	// rules as if you had used CompileAll().
-	err = fs.WalkDir(n.ForWalkDir(walkFS, ".", ".gitignore", func(path string, d fs.DirEntry, err error) error {
+	// First load the ignore files in the fs.
+	if err := n.AddFromFS(walkFS, ".gitignore"); err != nil {
+		panic(err)
+	}
+
+	// And then use nogo to walk by ignoring ignored files / folders.
+	err = fs.WalkDir(n.ForWalkDir(walkFS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
