@@ -41,6 +41,6 @@ NoGo can be used with fs.WalkDir. [Just see the example walk.](example/walk/main
 If you need to use another Walk function, you can build your own wrapper using 
 the `NoGo.WalkFunc` function. 
 
-I intentionally did not include this to avoid a new dependency
+I intentionally did not include an afero walk to avoid a new dependency
 just because of afero-compatibility. However, you can easily build your own.  
 You can find an example for afero in the documentation of `NoGo.WalkFunc`.
