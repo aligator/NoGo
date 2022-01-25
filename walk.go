@@ -26,7 +26,7 @@ import (
 //		fmt.Println(path, info.Name())
 //		return nil
 //	})
-func (n NoGo) WalkFunc(fsys fs.FS, path string, isDir bool, err error) (bool, error) {
+func (n *NoGo) WalkFunc(fsys fs.FS, path string, isDir bool, err error) (bool, error) {
 	if err != nil {
 		return false, err
 	}
@@ -65,7 +65,7 @@ func (n NoGo) WalkFunc(fsys fs.FS, path string, isDir bool, err error) (bool, er
 //		fmt.Println(path, d.Name())
 //		return nil
 //	}))
-func (n NoGo) ForWalkDir(fsys fs.FS, root string, fn fs.WalkDirFunc) (fs.FS, string, fs.WalkDirFunc) {
+func (n *NoGo) ForWalkDir(fsys fs.FS, root string, fn fs.WalkDirFunc) (fs.FS, string, fs.WalkDirFunc) {
 	return fsys, root, func(path string, d fs.DirEntry, err error) error {
 		ok, err := n.WalkFunc(fsys, path, d.IsDir(), err)
 		if err != nil {
