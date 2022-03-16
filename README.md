@@ -13,6 +13,7 @@ The goal is to provide the exact same .gitignore handling.
 
 ## Stability
 Note that this lib is currently beta and therefore may introduce breaking changes.
+However I don't think much will change.
 
 ## Usage
 ```go
